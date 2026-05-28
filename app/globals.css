@@ -1,0 +1,147 @@
+@import "tailwindcss";
+
+@theme {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  
+  --radius-lg: var(--radius);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-sm: calc(var(--radius) - 4px);
+  
+  --font-sans: var(--font-geist-sans), Inter, sans-serif;
+  --font-mono: var(--font-geist-mono), Courier, monospace;
+}
+
+/* Default Dark Mode Aesthetics */
+:root {
+  --background: #0A0A0B;          /* Near-black deep background */
+  --foreground: #FAFAFA;          /* Crisp light grey primary text */
+  
+  --card: #141416;                /* Deep grey surface elevation */
+  --card-foreground: #FAFAFA;
+  
+  --popover: #0A0A0B;
+  --popover-foreground: #FAFAFA;
+  
+  --primary: #00FF88;            /* Premium Electric Green accent */
+  --primary-foreground: #0A0A0B;
+  
+  --secondary: #1F1F23;          /* Soft border grey */
+  --secondary-foreground: #FAFAFA;
+  
+  --muted: #1F1F23;
+  --muted-foreground: #A1A1AA;   /* Muted secondary text */
+  
+  --accent: #1F1F23;
+  --accent-foreground: #FAFAFA;
+  
+  --destructive: #EF4444;        /* Soft error red */
+  --destructive-foreground: #FAFAFA;
+  
+  --border: #1F1F23;
+  --input: #1F1F23;
+  --ring: #00FF88;
+  
+  --radius: 0.75rem;             /* 12px Card corners */
+}
+
+/* Optional Light Mode Overrides */
+:root.light {
+  --background: #FAFAFA;
+  --foreground: #0A0A0B;
+  
+  --card: #FFFFFF;
+  --card-foreground: #0A0A0B;
+  
+  --popover: #FFFFFF;
+  --popover-foreground: #0A0A0B;
+  
+  --primary: #00C868;            /* Slightly darker electric green for contrast */
+  --primary-foreground: #FFFFFF;
+  
+  --secondary: #F4F4F5;
+  --secondary-foreground: #0A0A0B;
+  
+  --muted: #F4F4F5;
+  --muted-foreground: #71717A;
+  
+  --accent: #F4F4F5;
+  --accent-foreground: #0A0A0B;
+  
+  --destructive: #EF4444;
+  --destructive-foreground: #FFFFFF;
+  
+  --border: #E4E4E7;
+  --input: #E4E4E7;
+  --ring: #00C868;
+}
+
+/* Base Body Styles */
+body {
+  background-color: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+  overflow-x: hidden;
+  min-height: 100vh;
+  letter-spacing: -0.01em;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Tabular Numbers for Clean Metrics Alignment */
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+  font-family: var(--font-mono);
+}
+
+/* Smooth Scrolling */
+html {
+  scroll-behavior: smooth;
+}
+
+/* Premium Linear-inspired Glassmorphism Utility */
+.glass-panel {
+  background: rgba(20, 20, 22, 0.75);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(31, 31, 35, 0.5);
+  box-shadow: 0 4px 30px rgba(0, 0, 0, 0.5);
+}
+
+/* Subtle glowing accent buttons/cards */
+.neon-glow {
+  box-shadow: 0 0 15px rgba(0, 255, 136, 0.15);
+}
+
+/* Custom Hide Scrollbar for Nav & Carousels */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
