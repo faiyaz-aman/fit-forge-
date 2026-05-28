@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "@/components/ui/card";
@@ -14,11 +14,68 @@ import {
   BookOpen,
   ArrowRight,
   Plus,
+  CheckCircle2,
+  Calendar,
 } from "lucide-react";
+import {
+  getActivePlan,
+  getTodayWorkout,
+  isTodayCompleted,
+  getStreak,
+  getExerciseHistory,
+} from "@/lib/workout-store";
 
 export default function HomePage() {
   const [waterMl, setWaterMl] = useState(1250);
   const waterGoal = 3200;
+
+  const [activePlan, setActivePlan] = useState<any>(null);
+  const [todayWorkout, setTodayWorkout] = useState<any>(null);
+  const [completedToday, setCompletedToday] = useState(false);
+  const [streak, setStreak] = useState(0);
+  const [recentRecords, setRecentRecords] = useState<any[]>([]);
+
+  useEffect(() => {
+    // 1. Get active plan
+    const active = getActivePlan();
+    if (active) {
+      setActivePlan(active.plan);
+    }
+    
+    // 2. Get today's workout
+    const todayW = getTodayWorkout();
+    if (todayW) {
+      setTodayWorkout(todayW);
+    }
+    
+    // 3. Completed status
+    setCompletedToday(isTodayCompleted());
+    
+    // 4. Streak
+    setStreak(getStreak());
+    
+    // 5. Compute recent records dynamically from real logs
+    const lifts = ["Barbell Bench Press", "Barbell Back Squat", "Romanian Deadlift", "Weighted Pull-Up", "Dumbbell Shoulder Press"];
+    const records: any[] = [];
+    lifts.forEach(liftName => {
+      const history = getExerciseHistory(liftName, 1);
+      if (history.length > 0) {
+        const lastSession = history[0];
+        const maxWeightSet = lastSession.sets.reduce((max, s) => s.actualWeight > max.actualWeight ? s : max, lastSession.sets[0]);
+        if (maxWeightSet) {
+          records.push({
+            name: liftName,
+            weight: maxWeightSet.actualWeight,
+            reps: maxWeightSet.actualReps
+          });
+        }
+      }
+    });
+    
+    if (records.length > 0) {
+      setRecentRecords(records);
+    }
+  }, []);
 
   const handleAddWater = (amount: number) => {
     setWaterMl((prev) => Math.min(prev + amount, 6000));
@@ -37,7 +94,7 @@ export default function HomePage() {
           Forge Your Body, <span className="text-primary">Champ</span>
         </h2>
         <p className="text-xs text-muted-foreground">
-          {dateStr} — Consistency builds champions. You are on a 5-day streak!
+          {dateStr} — Consistency builds champions. You are on a {streak}-day streak!
         </p>
       </div>
 
@@ -45,54 +102,107 @@ export default function HomePage() {
         {/* LEFT COLUMN: Active Workout & Hydration */}
         <div className="lg:col-span-2 space-y-6">
           {/* Active Workout Card */}
-          <Card hoverGlow className="border-border bg-card">
-            <CardHeader className="pb-3">
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] font-bold uppercase tracking-widest text-primary bg-primary/10 px-2 py-0.5 rounded">
-                  Today's Schedule
-                </span>
-                <span className="text-xs font-medium text-muted-foreground flex items-center gap-1">
-                  <Flame className="w-3.5 h-3.5 text-orange-500 fill-orange-500" />
-                  ~450 kcal
-                </span>
-              </div>
-              <CardTitle className="text-lg font-bold uppercase tracking-wider text-foreground mt-2">
-                Push Day — Strength Focus
-              </CardTitle>
-              <CardDescription className="text-xs">
-                Targeting Chest, Front Delts, and Triceps. 4 exercises planned.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3 pb-4">
-              <div className="space-y-2 border-l-2 border-border/80 pl-4 py-1">
-                <div className="flex items-center justify-between text-xs text-muted-foreground">
-                  <span className="font-semibold text-foreground">1. Barbell Bench Press</span>
-                  <span className="font-mono tabular-nums">4 Sets × 6-8 Reps</span>
+          {completedToday ? (
+            <Card hoverGlow className="border-border bg-card">
+              <CardHeader className="pb-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-bold uppercase tracking-widest text-primary bg-primary/10 px-2 py-0.5 rounded flex items-center gap-1">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-primary" />
+                    Today's Training Done
+                  </span>
                 </div>
-                <div className="flex items-center justify-between text-xs text-muted-foreground">
-                  <span className="font-semibold text-foreground">2. Incline Dumbbell Bench Press</span>
-                  <span className="font-mono tabular-nums">3 Sets × 8-10 Reps</span>
+                <CardTitle className="text-lg font-bold uppercase tracking-wider text-foreground mt-2">
+                  Workout Completed!
+                </CardTitle>
+                <CardDescription className="text-xs">
+                  Awesome work today! You completed your scheduled routine for "{todayWorkout?.title || "today"}". Your lifts are logged and saved.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="pb-4">
+                <p className="text-xs text-muted-foreground">
+                  Consistency is the engine of progression. Check out your detailed sets logs and training wins in the history calendar.
+                </p>
+              </CardContent>
+              <CardFooter className="pt-0">
+                <Link href="/calendar" className="w-full">
+                  <Button variant="secondary" className="w-full flex items-center justify-center gap-2 border border-border">
+                    <Calendar className="w-4 h-4 text-primary" />
+                    View Activity Calendar
+                    <ArrowRight className="w-4 h-4" />
+                  </Button>
+                </Link>
+              </CardFooter>
+            </Card>
+          ) : todayWorkout ? (
+            <Card hoverGlow className="border-border bg-card">
+              <CardHeader className="pb-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-bold uppercase tracking-widest text-primary bg-primary/10 px-2 py-0.5 rounded">
+                    Today's Schedule
+                  </span>
+                  <span className="text-xs font-medium text-muted-foreground flex items-center gap-1">
+                    <Flame className="w-3.5 h-3.5 text-orange-500 fill-orange-500" />
+                    ~450 kcal
+                  </span>
                 </div>
-                <div className="flex items-center justify-between text-xs text-muted-foreground">
-                  <span className="font-semibold text-foreground">3. Dumbbell Shoulder Press</span>
-                  <span className="font-mono tabular-nums">3 Sets × 10-12 Reps</span>
+                <CardTitle className="text-lg font-bold uppercase tracking-wider text-foreground mt-2">
+                  {todayWorkout.title}
+                </CardTitle>
+                <CardDescription className="text-xs">
+                  Targeting {todayWorkout.focus}. {todayWorkout.exercises?.length || 0} exercises planned.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3 pb-4">
+                <div className="space-y-2 border-l-2 border-border/80 pl-4 py-1">
+                  {todayWorkout.exercises?.map((ex: any, idx: number) => (
+                    <div key={idx} className="flex items-center justify-between text-xs text-muted-foreground">
+                      <span className="font-semibold text-foreground">{idx + 1}. {ex.exerciseName}</span>
+                      <span className="font-mono tabular-nums">{ex.sets} Sets × {ex.repMin}-{ex.repMax} Reps</span>
+                    </div>
+                  ))}
                 </div>
-                <div className="flex items-center justify-between text-xs text-muted-foreground">
-                  <span className="font-semibold text-foreground">4. Tricep Overhead Extension</span>
-                  <span className="font-mono tabular-nums">3 Sets × 12-15 Reps</span>
+              </CardContent>
+              <CardFooter className="pt-0">
+                <Link href="/workout/today" className="w-full">
+                  <Button className="w-full flex items-center justify-center gap-2 group">
+                    <Dumbbell className="w-4 h-4 transition-transform group-hover:rotate-12" />
+                    Start Focused Workout
+                    <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-0.5" />
+                  </Button>
+                </Link>
+              </CardFooter>
+            </Card>
+          ) : (
+            <Card hoverGlow className="border-border bg-card border-dashed">
+              <CardHeader className="pb-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground bg-secondary px-2 py-0.5 rounded">
+                    No Active Split
+                  </span>
                 </div>
-              </div>
-            </CardContent>
-            <CardFooter className="pt-0">
-              <Link href="/workout/active-session-id" className="w-full">
-                <Button className="w-full flex items-center justify-center gap-2 group">
-                  <Dumbbell className="w-4 h-4 transition-transform group-hover:rotate-12" />
-                  Start Focused Workout
-                  <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-0.5" />
-                </Button>
-              </Link>
-            </CardFooter>
-          </Card>
+                <CardTitle className="text-lg font-bold uppercase tracking-wider text-foreground mt-2">
+                  Design Your Program
+                </CardTitle>
+                <CardDescription className="text-xs">
+                  Establish a split routine to schedule daily exercises, track set history, and automate progression triggers.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="pb-4">
+                <p className="text-xs text-muted-foreground leading-relaxed">
+                  FitForge strength engines require a workout routine to map today's exercises. Use our AI parser to extract document rules or construct your training split manually.
+                </p>
+              </CardContent>
+              <CardFooter className="pt-0">
+                <Link href="/workout" className="w-full">
+                  <Button className="w-full flex items-center justify-center gap-2 group">
+                    <Plus className="w-4 h-4" />
+                    Set Up Workout Split
+                    <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-0.5" />
+                  </Button>
+                </Link>
+              </CardFooter>
+            </Card>
+          )}
 
           {/* Water Intake Tracker */}
           <Card className="border-border bg-card overflow-hidden">
@@ -251,18 +361,14 @@ export default function HomePage() {
               </div>
             </CardHeader>
             <CardContent className="space-y-3 pb-4">
-              <div className="flex items-center justify-between text-xs">
-                <span className="font-semibold text-foreground">Barbell Bench Press</span>
-                <span className="font-mono text-primary font-bold">100 kg × 5 Reps</span>
-              </div>
-              <div className="flex items-center justify-between text-xs">
-                <span className="font-semibold text-foreground">Barbell Back Squat</span>
-                <span className="font-mono text-primary font-bold">140 kg × 6 Reps</span>
-              </div>
-              <div className="flex items-center justify-between text-xs">
-                <span className="font-semibold text-foreground">Weighted Pull-Up</span>
-                <span className="font-mono text-primary font-bold">+20 kg × 8 Reps</span>
-              </div>
+              {recentRecords.map((rec, idx) => (
+                <div key={idx} className="flex items-center justify-between text-xs">
+                  <span className="font-semibold text-foreground">{rec.name}</span>
+                  <span className="font-mono text-primary font-bold">
+                    {rec.weight} kg × {rec.reps} Rep{rec.reps > 1 ? "s" : ""}
+                  </span>
+                </div>
+              ))}
             </CardContent>
           </Card>
         </div>

@@ -1,7 +1,8 @@
 "use client";
 
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import Link from "next/link";
+import { getActivePlan, savePlan, deactivatePlan } from "@/lib/workout-store";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -53,6 +54,41 @@ export default function WorkoutPage() {
   const [rawText, setRawText] = useState("");
   const [useTextarea, setUseTextarea] = useState(false);
   const [error, setError] = useState("");
+
+  // Load active plan on mount
+  useEffect(() => {
+    const active = getActivePlan();
+    if (active) {
+      const mapped = {
+        id: active.plan.id,
+        planName: active.plan.name,
+        splitType: active.plan.splitType,
+        durationWeeks: active.plan.durationWeeks,
+        days: active.days.map((day) => {
+          const dayExs = active.exercises
+            .filter((ex) => ex.planDayId === day.id)
+            .sort((a, b) => a.exerciseOrder - b.exerciseOrder);
+          return {
+            dayNumber: day.orderIndex + 1,
+            name: day.title,
+            focus: day.focus,
+            orderIndex: day.orderIndex,
+            exercises: dayExs.map((ex) => ({
+              name: ex.exerciseName,
+              sets: ex.sets,
+              repMin: ex.repMin,
+              repMax: ex.repMax,
+              rest: ex.restSeconds,
+              notes: ex.notes,
+            })),
+          };
+        }),
+      };
+      setProgramData(mapped);
+      setActivePlan(mapped);
+      setUploadState("active");
+    }
+  }, []);
   
   // Parsed Program state to review & edit
   const [programData, setProgramData] = useState({
@@ -237,14 +273,104 @@ export default function WorkoutPage() {
   };
 
   const handleConfirmSave = () => {
+    // Save to store
+    const planId = activePlan?.id || `plan-${Date.now()}`;
+    const planEntity = {
+      id: planId,
+      name: programData.planName,
+      splitType: programData.splitType,
+      scheduleType: "cycle" as const,
+      repeatEnabled: true,
+      durationWeeks: programData.durationWeeks,
+      startDate: new Date().toISOString(),
+      isActive: true,
+      createdAt: new Date().toISOString(),
+    };
+
+    const dayEntities: any[] = [];
+    const exerciseEntities: any[] = [];
+
+    programData.days.forEach((day, dayIdx) => {
+      const dayId = `day-${planId}-${dayIdx}`;
+      dayEntities.push({
+        id: dayId,
+        planId: planId,
+        dayCode: `D${day.dayNumber}`,
+        title: day.name,
+        focus: day.focus,
+        orderIndex: day.orderIndex,
+      });
+
+      day.exercises.forEach((ex, exIdx) => {
+        exerciseEntities.push({
+          id: `ex-${dayId}-${exIdx}`,
+          planDayId: dayId,
+          exerciseName: ex.name,
+          sets: ex.sets,
+          repTarget: ex.repMax,
+          repMin: ex.repMin,
+          repMax: ex.repMax,
+          targetWeight: null,
+          restSeconds: ex.rest,
+          trackingType: "weight_reps",
+          notes: ex.notes,
+          exerciseOrder: exIdx,
+        });
+      });
+    });
+
+    savePlan(planEntity, dayEntities, exerciseEntities);
+
     setActivePlan(programData);
     setUploadState("active");
   };
 
   const handleReplacePlan = () => {
+    deactivatePlan();
     setUploadState("idle");
     setSelectedFile(null);
     setRawText("");
+  };
+
+  const handleBuildManually = () => {
+    setProgramData({
+      planName: "My Custom Plan",
+      splitType: "Custom Split",
+      durationWeeks: 12,
+      days: [
+        {
+          dayNumber: 1,
+          name: "Day 1",
+          focus: "Full Body / Custom",
+          orderIndex: 0,
+          exercises: [
+            { name: "Barbell Bench Press", sets: 3, repMin: 8, repMax: 12, rest: 90, notes: "" }
+          ]
+        }
+      ]
+    });
+    setUploadState("preview");
+  };
+
+  const handleAddDay = () => {
+    setProgramData((prev) => {
+      const nextDayNum = prev.days.length + 1;
+      return {
+        ...prev,
+        days: [
+          ...prev.days,
+          {
+            dayNumber: nextDayNum,
+            name: `Day ${nextDayNum}`,
+            focus: "Custom Focus",
+            orderIndex: nextDayNum - 1,
+            exercises: [
+              { name: "Barbell Bench Press", sets: 3, repMin: 8, repMax: 12, rest: 90, notes: "" }
+            ]
+          }
+        ]
+      };
+    });
   };
 
   return (
@@ -283,27 +409,37 @@ export default function WorkoutPage() {
                   </CardHeader>
                   <CardContent className="space-y-4">
                     {/* Mode Toggle Button */}
-                    <div className="flex bg-[#0A0A0B] p-1 rounded-lg border border-border/60 w-fit">
-                      <button
-                        onClick={() => setUseTextarea(false)}
-                        className={`px-3 py-1.5 rounded-md text-[10px] font-bold uppercase tracking-wider transition-all cursor-pointer ${
-                          !useTextarea
-                            ? "bg-primary text-primary-foreground neon-glow"
-                            : "text-muted-foreground hover:text-foreground"
-                        }`}
+                    <div className="flex flex-wrap gap-3 items-center justify-between">
+                      <div className="flex bg-[#0A0A0B] p-1 rounded-lg border border-border/60 w-fit">
+                        <button
+                          onClick={() => setUseTextarea(false)}
+                          className={`px-3 py-1.5 rounded-md text-[10px] font-bold uppercase tracking-wider transition-all cursor-pointer ${
+                            !useTextarea
+                              ? "bg-primary text-primary-foreground neon-glow"
+                              : "text-muted-foreground hover:text-foreground"
+                          }`}
+                        >
+                          File Upload
+                        </button>
+                        <button
+                          onClick={() => setUseTextarea(true)}
+                          className={`px-3 py-1.5 rounded-md text-[10px] font-bold uppercase tracking-wider transition-all cursor-pointer ${
+                            useTextarea
+                              ? "bg-primary text-primary-foreground neon-glow"
+                              : "text-muted-foreground hover:text-foreground"
+                          }`}
+                        >
+                          Copy-Paste Text
+                        </button>
+                      </div>
+                      <Button
+                        variant="secondary"
+                        onClick={handleBuildManually}
+                        className="h-8 px-3 text-[10px] font-bold uppercase tracking-wider border border-border hover:bg-primary/10 hover:text-primary transition-all flex items-center gap-1.5"
                       >
-                        File Upload
-                      </button>
-                      <button
-                        onClick={() => setUseTextarea(true)}
-                        className={`px-3 py-1.5 rounded-md text-[10px] font-bold uppercase tracking-wider transition-all cursor-pointer ${
-                          useTextarea
-                            ? "bg-primary text-primary-foreground neon-glow"
-                            : "text-muted-foreground hover:text-foreground"
-                        }`}
-                      >
-                        Copy-Paste Text
-                      </button>
+                        <Plus className="w-3.5 h-3.5" />
+                        Build Manually
+                      </Button>
                     </div>
 
                     {!useTextarea ? (
@@ -662,6 +798,16 @@ export default function WorkoutPage() {
                   </CardFooter>
                 </Card>
               ))}
+
+              <Card
+                onClick={handleAddDay}
+                className="border-dashed border-2 border-border/60 hover:border-primary/50 hover:bg-secondary/10 flex flex-col items-center justify-center min-h-[450px] cursor-pointer group transition-all"
+              >
+                <Plus className="w-8 h-8 text-muted-foreground group-hover:text-primary transition-colors animate-pulse" />
+                <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground group-hover:text-primary mt-2">
+                  Add Training Day
+                </span>
+              </Card>
             </div>
           </motion.div>
         )}

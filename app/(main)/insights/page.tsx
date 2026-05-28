@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "@/components/ui/card";
@@ -16,6 +16,7 @@ import {
   ArrowRight,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
+import { getVolumeTrend, getWorkoutLogs, getActivePlan } from "@/lib/workout-store";
 
 interface Insights {
   headline: string;
@@ -32,28 +33,50 @@ export default function InsightsPage() {
   const [loading, setLoading] = useState(false);
   const [insights, setInsights] = useState<Insights | null>(null);
 
-  // Mocked aggregated parameters for presentation
-  const weekSummary = activeWeek === 0 ? {
-    volume: "118,500 kg",
+  const [weekSummary, setWeekSummary] = useState({
+    volume: "0 kg",
     sleep: "7.8 hrs / day",
     water: "6 / 7 days met",
     calories: "2,650 kcal / day",
-  } : {
-    volume: "109,200 kg",
-    sleep: "7.4 hrs / day",
-    water: "5 / 7 days met",
-    calories: "2,580 kcal / day",
-  };
+  });
+
+  useEffect(() => {
+    const volTrend = getVolumeTrend(8);
+    let curVol = 0;
+    let prevVol = 0;
+    
+    if (volTrend.length > 0) {
+      curVol = volTrend[volTrend.length - 1].volume;
+      prevVol = volTrend.length > 1 ? volTrend[volTrend.length - 2].volume : 0;
+    }
+    
+    // Check if we have real volumes. If not, use mock values for full presentation fidelity
+    const displayVol = activeWeek === 0 ? (curVol > 0 ? curVol : 118500) : (prevVol > 0 ? prevVol : 109200);
+
+    setWeekSummary({
+      volume: `${displayVol.toLocaleString()} kg`,
+      sleep: activeWeek === 0 ? "7.8 hrs / day" : "7.4 hrs / day",
+      water: activeWeek === 0 ? "6 / 7 days met" : "5 / 7 days met",
+      calories: activeWeek === 0 ? "2,650 kcal / day" : "2,580 kcal / day",
+    });
+  }, [activeWeek]);
 
   const handleGenerateReport = async () => {
     setLoading(true);
     setInsights(null);
 
     try {
+      const logs = getWorkoutLogs(5); // Send last 5 completed workout logs
+      const activePlan = getActivePlan();
+      
       const response = await fetch("/api/ai/insights", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ week: activeWeek }),
+        body: JSON.stringify({
+          week: activeWeek,
+          workoutHistory: logs,
+          activePlan: activePlan ? { name: activePlan.plan.name, splitType: activePlan.plan.splitType } : null,
+        }),
       });
 
       if (response.ok) {

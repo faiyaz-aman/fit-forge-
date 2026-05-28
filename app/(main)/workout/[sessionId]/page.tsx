@@ -3,6 +3,15 @@
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
+import {
+  getActivePlan,
+  getTodayWorkout,
+  startSession,
+  saveSetLog,
+  completeSession,
+  getLastSession,
+  analyzeProgression
+} from "@/lib/workout-store";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -126,8 +135,11 @@ const mockActiveWorkout = {
 
 export default function WorkoutSessionPage() {
   const router = useRouter();
+  const params = useParams();
+  const sessionId = params.sessionId as string;
   
-  const [workout, setWorkout] = useState(mockActiveWorkout);
+  const [storeSessionId, setStoreSessionId] = useState<string | null>(null);
+  const [workout, setWorkout] = useState<any>({ dayName: "", focus: "", exercises: [] });
   const [duration, setDuration] = useState(0);
   const [activeExerciseIdx, setActiveExerciseIdx] = useState(0);
   const [sessionTab, setSessionTab] = useState<"log" | "cues">("log");
@@ -148,6 +160,121 @@ export default function WorkoutSessionPage() {
   const [isListening, setIsListening] = useState(false);
   const [voiceLogResult, setVoiceLogResult] = useState("");
   const [voiceError, setVoiceError] = useState("");
+
+  // Load session from store
+  useEffect(() => {
+    const active = getActivePlan();
+    if (!active) {
+      router.push("/workout");
+      return;
+    }
+
+    let targetDayId = "";
+    if (sessionId === "today") {
+      const todayW = getTodayWorkout();
+      if (todayW) {
+        targetDayId = todayW.id;
+      } else {
+        targetDayId = active.days[0].id;
+      }
+    } else if (sessionId.startsWith("session-")) {
+      const dayNum = parseInt(sessionId.split("-")[1], 10);
+      const dayIdx = dayNum - 1;
+      if (active.days[dayIdx]) {
+        targetDayId = active.days[dayIdx].id;
+      } else {
+        targetDayId = active.days[0].id;
+      }
+    } else {
+      targetDayId = active.days[0].id;
+    }
+
+    if (targetDayId) {
+      const curSession = startSession(targetDayId);
+      
+      // Map store session logs into the layout structure
+      const mappedExercises = curSession.logs!.map((log, idx) => {
+        // Find corresponding plan exercise if exists to get rest & notes
+        const planEx = active.exercises.find(e => e.planDayId === targetDayId && e.exerciseName.toLowerCase() === log.exerciseName.toLowerCase());
+        
+        const lastSessionRecord = getLastSession(log.exerciseName);
+        let prevSessionStr = "No previous performance";
+        if (lastSessionRecord && lastSessionRecord.sets && lastSessionRecord.sets.length > 0) {
+          const firstSet = lastSessionRecord.sets[0];
+          prevSessionStr = `${firstSet.actualWeight}kg × ${firstSet.actualReps} @ RPE ${firstSet.rpe || 8}`;
+        }
+        
+        const progression = analyzeProgression(log.exerciseName);
+        let targetCueStr = "Focus on form and progression";
+        if (progression.recommendation === "increase") {
+          targetCueStr = `💥 +2.5kg Progressive Overload recommended: Aim for ${progression.suggestedWeight}kg!`;
+        } else if (progression.recommendation === "deload") {
+          targetCueStr = `📉 Deload: Focus on recovery at ${progression.suggestedWeight}kg.`;
+        }
+
+        // Muscle-specific cues & mistakes (seed defaults)
+        const lowerName = log.exerciseName.toLowerCase();
+        let primaryMuscle = "Full Body";
+        let cues = ["Control the eccentric phase.", "Brace your core.", "Maintain alignment."];
+        let mistakes = ["Using momentum.", "Partial range of motion."];
+        
+        if (lowerName.includes("bench") || lowerName.includes("fly") || lowerName.includes("pushup")) {
+          primaryMuscle = "Chest";
+          cues = ["Retract shoulder blades back and down.", "Brace core and drive feet into floor.", "Bar touches mid-chest (nipple line).", "Tuck elbows slightly (45 degree angle)."];
+          mistakes = ["Bouncing the bar off your chest.", "Flaring elbows wide (90 degrees).", "Lifting hips off the bench."];
+        } else if (lowerName.includes("pull") || lowerName.includes("row") || lowerName.includes("chin")) {
+          primaryMuscle = "Lats";
+          cues = ["Pull with your elbows, not hands.", "Squeeze shoulder blades together at peak.", "Control lowering (3s eccentric).", "Full stretch at bottom."];
+          mistakes = ["Using body swing momentum.", "Shrugging shoulders upward."];
+        } else if (lowerName.includes("squat") || lowerName.includes("press") || lowerName.includes("extension")) {
+          primaryMuscle = "Quads";
+          cues = ["Brace core deeply before descent.", "Push knees out inline with toes.", "Drive feet hard through mid-foot.", "Keep chest upright."];
+          mistakes = ["Knees caving inwards (valgus).", "Heels rising off the floor."];
+        } else if (lowerName.includes("deadlift") || lowerName.includes("curl") || lowerName.includes("hinge")) {
+          primaryMuscle = "Hamstrings";
+          cues = ["Hinge at hips, soft knee bend.", "Keep spine neutral throughout.", "Bar stays close to legs.", "Squeeze glutes at lockout."];
+          mistakes = ["Rounding lower spine.", "Squatting the weight up."];
+        } else if (lowerName.includes("shoulder") || lowerName.includes("press") || lowerName.includes("lateral")) {
+          primaryMuscle = "Shoulders";
+          cues = ["Keep core braced, avoid arching spine.", "Lower weight under control to ear level.", "Press straight overhead.", "Shrug traps slightly at lockout."];
+          mistakes = ["Excessive spinal extension (arching back).", "Bouncing weight at bottom."];
+        }
+
+        return {
+          id: log.id,
+          name: log.exerciseName,
+          primaryMuscle,
+          instructions: planEx?.notes || "Keep clean form and track performance.",
+          restSeconds: planEx?.restSeconds || 90,
+          prevSession: prevSessionStr,
+          targetCue: targetCueStr,
+          demoUrl: "https://assets.mixkit.co/videos/preview/mixkit-man-training-with-barbell-in-gym-43093-large.mp4",
+          cues,
+          mistakes,
+          sets: log.sets!.map(set => ({
+            id: set.id,
+            setNumber: set.setNumber,
+            type: "WORKING",
+            weight: set.actualWeight,
+            reps: set.actualReps,
+            rpe: set.rpe || 8,
+            completed: set.completed,
+          })),
+        };
+      });
+
+      const dayTitle = active.days.find(d => d.id === targetDayId)?.title || "Workout Session";
+      const dayFocus = active.days.find(d => d.id === targetDayId)?.focus || "Strength Split";
+
+      setWorkout({
+        dayName: dayTitle,
+        focus: dayFocus,
+        exercises: mappedExercises,
+      });
+
+      setStoreSessionId(curSession.id);
+    }
+  }, [sessionId]);
 
   const startVoiceLogging = () => {
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
@@ -247,7 +374,7 @@ export default function WorkoutSessionPage() {
     }
 
     if (weight > 0 || reps > 0) {
-      const setIdx = activeExercise.sets.findIndex(s => s.setNumber === setNum);
+      const setIdx = activeExercise.sets.findIndex((s: any) => s.setNumber === setNum);
       if (setIdx !== -1) {
         if (weight > 0) handleSetMetricChange(activeExerciseIdx, setIdx, "weight", weight);
         if (reps > 0) handleSetMetricChange(activeExerciseIdx, setIdx, "reps", reps);
@@ -299,11 +426,21 @@ export default function WorkoutSessionPage() {
   };
 
   const handleSetMetricChange = (exIdx: number, setIdx: number, field: string, value: any) => {
-    setWorkout((prev) => {
+    setWorkout((prev: any) => {
       const updatedEx = [...prev.exercises];
       const updatedSets = [...updatedEx[exIdx].sets];
       updatedSets[setIdx] = { ...updatedSets[setIdx], [field]: value };
       updatedEx[exIdx] = { ...updatedEx[exIdx], sets: updatedSets };
+
+      // Real-time persistence: save to localStorage immediately
+      const currentSet = updatedSets[setIdx];
+      saveSetLog(currentSet.id, {
+        actualWeight: field === "weight" ? Number(value) : currentSet.weight,
+        actualReps: field === "reps" ? Number(value) : currentSet.reps,
+        rpe: field === "rpe" ? (value === "" ? null : Number(value)) : currentSet.rpe,
+        completed: field === "completed" ? Boolean(value) : currentSet.completed,
+      });
+
       return { ...prev, exercises: updatedEx };
     });
   };
@@ -357,18 +494,33 @@ export default function WorkoutSessionPage() {
 
   const activeExercise = workout.exercises[activeExerciseIdx];
 
+  // Loading safety fallback
+  if (!workout || !workout.exercises || workout.exercises.length === 0) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-[#0A0A0B] text-foreground p-6 select-none">
+        <div className="relative flex items-center justify-center">
+          <div className="w-12 h-12 rounded-full border-2 border-border border-t-primary animate-spin" />
+          <Dumbbell className="w-4 h-4 text-primary absolute animate-pulse" />
+        </div>
+        <p className="text-xs text-muted-foreground mt-4 uppercase tracking-widest font-bold">
+          Assembling Gym Session...
+        </p>
+      </div>
+    );
+  }
+
   // Calculate session summary stats
-  const totalVolume = workout.exercises.reduce((sum, ex) => {
+  const totalVolume = workout.exercises.reduce((sum: number, ex: any) => {
     return (
       sum +
-      ex.sets.reduce((setSum, s) => {
+      ex.sets.reduce((setSum: number, s: any) => {
         return setSum + (s.completed ? s.weight * s.reps : 0);
       }, 0)
     );
   }, 0);
 
-  const completedSetsCount = workout.exercises.reduce((sum, ex) => {
-    return sum + ex.sets.filter((s) => s.completed).length;
+  const completedSetsCount = workout.exercises.reduce((sum: number, ex: any) => {
+    return sum + ex.sets.filter((s: any) => s.completed).length;
   }, 0);
 
   return (
@@ -406,8 +558,8 @@ export default function WorkoutSessionPage() {
 
             {/* Exercises Tabs Horizontal Stepper */}
             <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1 select-none">
-              {workout.exercises.map((ex, idx) => {
-                const completedSets = ex.sets.filter((s) => s.completed).length;
+              {workout.exercises.map((ex: any, idx: number) => {
+                const completedSets = ex.sets.filter((s: any) => s.completed).length;
                 const isSelected = activeExerciseIdx === idx;
 
                 return (
@@ -501,7 +653,7 @@ export default function WorkoutSessionPage() {
                     </div>
 
                     <CardContent className="p-4 space-y-3">
-                      {activeExercise.sets.map((set, setIdx) => (
+                      {activeExercise.sets.map((set: any, setIdx: number) => (
                         <div
                           key={set.id}
                           className={`p-3 rounded-xl border transition-all duration-200 relative flex flex-col md:flex-row md:items-center justify-between gap-3 ${
@@ -662,7 +814,7 @@ export default function WorkoutSessionPage() {
                         </CardTitle>
                       </CardHeader>
                       <CardContent className="space-y-2 text-xs pb-4">
-                        {activeExercise.cues.map((cue, idx) => (
+                        {activeExercise.cues.map((cue: any, idx: number) => (
                           <div key={idx} className="flex gap-2 text-muted-foreground">
                             <span className="font-mono text-primary font-bold">{idx + 1}.</span>
                             <span>{cue}</span>
@@ -680,7 +832,7 @@ export default function WorkoutSessionPage() {
                         </CardTitle>
                       </CardHeader>
                       <CardContent className="space-y-2 text-xs pb-4">
-                        {activeExercise.mistakes.map((mistake, idx) => (
+                        {activeExercise.mistakes.map((mistake: any, idx: number) => (
                           <div key={idx} className="flex gap-2 text-muted-foreground">
                             <span className="text-destructive font-bold">•</span>
                             <span>{mistake}</span>
@@ -925,7 +1077,20 @@ export default function WorkoutSessionPage() {
 
             {/* Dashboard Redirect action */}
             <div className="pt-6 max-w-sm mx-auto">
-              <Button onClick={() => router.push("/home")} className="w-full flex items-center justify-center gap-2">
+              <Button 
+                onClick={() => {
+                  if (storeSessionId) {
+                    completeSession(storeSessionId, {
+                      moodRating: moodLog,
+                      sorenessAreas: soreMuscles,
+                      notes: "Logged session via gym interface.",
+                      durationSeconds: duration
+                    });
+                  }
+                  router.push("/home");
+                }} 
+                className="w-full flex items-center justify-center gap-2"
+              >
                 Return to Dashboard
                 <ArrowRight className="w-4 h-4" />
               </Button>

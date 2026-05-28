@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
+import { getWorkoutLogs } from "@/lib/workout-store";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import {
@@ -55,18 +56,25 @@ const seedActivityLogs: Record<number, LogItem[]> = {
 };
 
 export default function CalendarPage() {
-  const [currentYear, setCurrentYear] = useState(2026);
-  const [currentMonth, setCurrentMonth] = useState(4); // 0-indexed (4 = May)
+  const [currentYear, setCurrentYear] = useState(new Date().getFullYear());
+  const [currentMonth, setCurrentMonth] = useState(new Date().getMonth());
   const [selectedDay, setSelectedDay] = useState<number | null>(null);
+  const [sessions, setSessions] = useState<any[]>([]);
+
+  useEffect(() => {
+    // Load real workout logs from the store
+    const completed = getWorkoutLogs();
+    setSessions(completed);
+  }, []);
 
   const monthNames = [
     "January", "February", "March", "April", "May", "June",
     "July", "August", "September", "October", "November", "December"
   ];
 
-  // Logic to build typical calendar grid (May 2026 starts on Friday = 5 empty cells)
-  const totalDays = 31;
-  const startOffset = 4; // May 1, 2026 is a Friday (4 empty pads for Sun, Mon, Tue, Wed, Thu)
+  // Logic to build dynamic calendar grid
+  const totalDays = new Date(currentYear, currentMonth + 1, 0).getDate();
+  const startOffset = new Date(currentYear, currentMonth, 1).getDay();
   
   const handlePrevMonth = () => {
     if (currentMonth === 0) {
@@ -88,18 +96,68 @@ export default function CalendarPage() {
     setSelectedDay(null);
   };
 
+  const getLogsForDay = (day: number) => {
+    const targetDateStr = `${currentYear}-${(currentMonth + 1).toString().padStart(2, "0")}-${day.toString().padStart(2, "0")}`;
+    
+    // Find sessions on this day
+    const daySessions = sessions.filter((s) => s.scheduledDate === targetDateStr);
+    
+    const logs: LogItem[] = [];
+    
+    daySessions.forEach((s) => {
+      let volume = 0;
+      let totalSets = 0;
+      
+      if (s.logs) {
+        s.logs.forEach((log: any) => {
+          if (log.sets) {
+            log.sets.forEach((set: any) => {
+              if (set.completed) {
+                volume += set.actualWeight * set.actualReps;
+                totalSets++;
+              }
+            });
+          }
+        });
+      }
+      
+      const durationMins = s.durationSeconds ? `${Math.round(s.durationSeconds / 60)}m` : "45m";
+      
+      logs.push({
+        id: s.id,
+        type: "workout",
+        title: s.planDayTitle || "Workout Session",
+        details: `Volume: ${volume.toLocaleString()} kg | Sets: ${totalSets} logged | Duration: ${durationMins}`,
+        meta: {
+          volume,
+          sets: totalSets,
+          duration: durationMins,
+          split: s.planDayTitle,
+        },
+      });
+    });
+    
+    // Check if there is nutrition, water, or photo data in mock seeds
+    if (currentMonth === 4 && currentYear === 2026) {
+      const mockNutritionWater = seedActivityLogs[day] || [];
+      const nonWorkouts = mockNutritionWater.filter(l => l.type !== "workout");
+      logs.push(...nonWorkouts);
+    }
+    
+    return logs;
+  };
+
   // Compile full grid array
   const gridCells = [];
   for (let i = 0; i < startOffset; i++) {
     gridCells.push({ dayNumber: null, logs: [] });
   }
   for (let i = 1; i <= totalDays; i++) {
-    // Only fetch logs for May 2026
-    const logs = currentMonth === 4 && currentYear === 2026 ? seedActivityLogs[i] || [] : [];
+    const logs = getLogsForDay(i);
     gridCells.push({ dayNumber: i, logs });
   }
 
-  const selectedDayLogs = selectedDay ? seedActivityLogs[selectedDay] || [] : [];
+  const selectedDayLogs = selectedDay ? getLogsForDay(selectedDay) : [];
 
   return (
     <div className="space-y-6 relative overflow-hidden">

@@ -51,7 +51,48 @@ const getMockInsights = (weekOffset: number) => {
 export async function POST(req: Request) {
   try {
     const body = await req.json().catch(() => ({}));
-    const { week } = body; // 0 = current week, 1 = last week
+    const { week, workoutHistory, activePlan } = body; // 0 = current week, 1 = last week
+
+    // Construct highly context-aware coaching prompt
+    let prompt = `You are an elite sports science AI and strength coach. Analyze the user's weekly training logs and generate a comprehensive Weekly Insights Report for week index ${week || 0}.
+`;
+
+    if (activePlan) {
+      prompt += `Active Training Split Program: "${activePlan.name}" (${activePlan.splitType})\n`;
+    }
+    
+    if (workoutHistory && workoutHistory.length > 0) {
+      prompt += `Recent Workout History (last ${workoutHistory.length} completed sessions):\n`;
+      workoutHistory.forEach((session: any, idx: number) => {
+        prompt += `- Session ${idx + 1} on ${session.scheduledDate}: ${session.planDayTitle} (Duration: ${session.durationSeconds ? Math.round(session.durationSeconds / 60) : 45} mins, Mood felt: ${session.moodRating || 3}/5, Soreness: ${session.sorenessAreas && session.sorenessAreas.length > 0 ? session.sorenessAreas.join(", ") : "None"})\n`;
+        if (session.logs) {
+          session.logs.forEach((exLog: any) => {
+            const completedSets = exLog.sets ? exLog.sets.filter((s: any) => s.completed) : [];
+            if (completedSets.length > 0) {
+              prompt += `  * ${exLog.exerciseName}: `;
+              const setStrings = completedSets.map((s: any) => `${s.actualWeight}kg x ${s.actualReps} (RPE ${s.rpe || "N/A"})`);
+              prompt += setStrings.join(", ") + "\n";
+            }
+          });
+        }
+      });
+    } else {
+      prompt += `No workouts logged yet. Suggest standard baseline hypertrophy split guidelines, hydration priorities (3L+), and recovery tactics.\n`;
+    }
+
+    prompt += `
+Output MUST be strict JSON matching this exact structure:
+{
+  "headline": "Sleek overview headline summarizing wins",
+  "wins": ["bullet 1", "bullet 2", "bullet 3"],
+  "patterns": ["bullet 1", "bullet 2"],
+  "improvements": ["bullet 1", "bullet 2"],
+  "nextFocus": "Next week focus summary",
+  "quote": "Inspirational scientific quote",
+  "author": "Author name"
+}
+
+Provide highly personalized, evidence-grounded scientific synthesis of their training loads, fatigue accumulation, and progressive overload recommendations.`;
 
     // Check Gemini API integration
     const geminiKey = process.env.GEMINI_API_KEY;
@@ -62,19 +103,7 @@ export async function POST(req: Request) {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             contents: [{
-              parts: [{
-                text: `You are an elite sports science AI. Analyze the user's weekly training logs and generate a comprehensive Weekly Insights Report for week index ${week || 0}.
-Output MUST be strict JSON matching this exact structure:
-{
-  "headline": "Sleek overview headline",
-  "wins": ["bullet 1", "bullet 2", "bullet 3"],
-  "patterns": ["bullet 1", "bullet 2"],
-  "improvements": ["bullet 1", "bullet 2"],
-  "nextFocus": "Next week focus",
-  "quote": "Inspirational scientific quote",
-  "author": "Author name"
-}`
-              }]
+              parts: [{ text: prompt }]
             }],
             generationConfig: {
               responseMimeType: "application/json"
@@ -108,8 +137,7 @@ Output MUST be strict JSON matching this exact structure:
             messages: [
               {
                 role: "system",
-                content: `You are an elite sports science AI. Analyze the user's weekly training logs and generate a comprehensive Weekly Insights Report.
-Output MUST be strict JSON matching this exact structure:
+                content: `You are an elite sports science AI. Output MUST be strict JSON matching this exact structure:
 {
   "headline": "Sleek overview headline",
   "wins": ["bullet 1", "bullet 2", "bullet 3"],
@@ -120,7 +148,7 @@ Output MUST be strict JSON matching this exact structure:
   "author": "Author name"
 }`,
               },
-              { role: "user", content: `Generate report for week index ${week}` },
+              { role: "user", content: prompt },
             ],
             temperature: 0.7,
             max_tokens: 800,
