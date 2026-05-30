@@ -45,12 +45,7 @@ self.addEventListener("activate", (event) => {
 self.addEventListener("fetch", (event) => {
   event.respondWith(
     caches.match(event.request).then((cachedResponse) => {
-      if (cachedResponse) {
-        return cachedResponse;
-      }
-      return fetch(event.request).catch((err) => {
-        console.warn("FitForge Network fetch failed. Serving offline placeholders:", err);
-      });
+      return cachedResponse || fetch(event.request);
     })
   );
 });
