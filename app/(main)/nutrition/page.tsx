@@ -106,11 +106,14 @@ export default function NutritionPage() {
     }
   };
 
+  const todayStr = getLocalDateString();
+  const todayLogs = logs.filter((log) => log.loggedAt === todayStr);
+
   // Total macro calculations
-  const totalCalories = logs.reduce((sum, log) => sum + log.calories, 0);
-  const totalProtein = logs.reduce((sum, log) => sum + log.protein, 0);
-  const totalCarbs = logs.reduce((sum, log) => sum + log.carbs, 0);
-  const totalFat = logs.reduce((sum, log) => sum + log.fat, 0);
+  const totalCalories = todayLogs.reduce((sum, log) => sum + log.calories, 0);
+  const totalProtein = todayLogs.reduce((sum, log) => sum + log.protein, 0);
+  const totalCarbs = todayLogs.reduce((sum, log) => sum + log.carbs, 0);
+  const totalFat = todayLogs.reduce((sum, log) => sum + log.fat, 0);
 
   // Core Goal profiles (Bulk profile defaults)
   const [goalCalories, setGoalCalories] = useState(2800);
@@ -162,7 +165,7 @@ export default function NutritionPage() {
     updateLogsAndSync(remaining, mealToDelete, "delete");
   };
 
-  const filterLogs = (type: string) => logs.filter((log) => log.mealType === type);
+  const filterLogs = (type: string) => todayLogs.filter((log) => log.mealType === type);
 
   return (
     <div className="space-y-6">

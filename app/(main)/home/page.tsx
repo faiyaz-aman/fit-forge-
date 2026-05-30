@@ -64,10 +64,11 @@ export default function HomePage() {
       const storedMeals = localStorage.getItem("fitforge_meals");
       if (storedMeals) {
         const meals = JSON.parse(storedMeals);
-        const totalCal = meals.reduce((sum: number, m: any) => sum + (Number(m.calories) || 0), 0);
-        const totalProt = meals.reduce((sum: number, m: any) => sum + (Number(m.protein) || 0), 0);
-        const totalCrbs = meals.reduce((sum: number, m: any) => sum + (Number(m.carbs) || 0), 0);
-        const totalFt = meals.reduce((sum: number, m: any) => sum + (Number(m.fat) || 0), 0);
+        const todayMeals = meals.filter((m: any) => m.loggedAt === todayStr);
+        const totalCal = todayMeals.reduce((sum: number, m: any) => sum + (Number(m.calories) || 0), 0);
+        const totalProt = todayMeals.reduce((sum: number, m: any) => sum + (Number(m.protein) || 0), 0);
+        const totalCrbs = todayMeals.reduce((sum: number, m: any) => sum + (Number(m.carbs) || 0), 0);
+        const totalFt = todayMeals.reduce((sum: number, m: any) => sum + (Number(m.fat) || 0), 0);
         
         setNutritionCalories(totalCal);
         setNutritionProtein(totalProt);
@@ -106,10 +107,11 @@ export default function HomePage() {
         try {
           localStorage.setItem("fitforge_meals", JSON.stringify(cloudMeals));
         } catch (e) {}
-        const totalCal = cloudMeals.reduce((sum: number, m: any) => sum + (Number(m.calories) || 0), 0);
-        const totalProt = cloudMeals.reduce((sum: number, m: any) => sum + (Number(m.protein) || 0), 0);
-        const totalCrbs = cloudMeals.reduce((sum: number, m: any) => sum + (Number(m.carbs) || 0), 0);
-        const totalFt = cloudMeals.reduce((sum: number, m: any) => sum + (Number(m.fat) || 0), 0);
+        const todayMeals = cloudMeals.filter((m: any) => m.loggedAt === todayStr);
+        const totalCal = todayMeals.reduce((sum: number, m: any) => sum + (Number(m.calories) || 0), 0);
+        const totalProt = todayMeals.reduce((sum: number, m: any) => sum + (Number(m.protein) || 0), 0);
+        const totalCrbs = todayMeals.reduce((sum: number, m: any) => sum + (Number(m.carbs) || 0), 0);
+        const totalFt = todayMeals.reduce((sum: number, m: any) => sum + (Number(m.fat) || 0), 0);
         
         setNutritionCalories(totalCal);
         setNutritionProtein(totalProt);
@@ -167,12 +169,14 @@ export default function HomePage() {
       // 0.5. Get nutrition logs
       try {
         const storedMeals = localStorage.getItem("fitforge_meals");
+        const todayDateStr = getLocalDateString();
         if (storedMeals) {
           const meals = JSON.parse(storedMeals);
-          const totalCal = meals.reduce((sum: number, m: any) => sum + (Number(m.calories) || 0), 0);
-          const totalProt = meals.reduce((sum: number, m: any) => sum + (Number(m.protein) || 0), 0);
-          const totalCrbs = meals.reduce((sum: number, m: any) => sum + (Number(m.carbs) || 0), 0);
-          const totalFt = meals.reduce((sum: number, m: any) => sum + (Number(m.fat) || 0), 0);
+          const todayMeals = meals.filter((m: any) => m.loggedAt === todayDateStr);
+          const totalCal = todayMeals.reduce((sum: number, m: any) => sum + (Number(m.calories) || 0), 0);
+          const totalProt = todayMeals.reduce((sum: number, m: any) => sum + (Number(m.protein) || 0), 0);
+          const totalCrbs = todayMeals.reduce((sum: number, m: any) => sum + (Number(m.carbs) || 0), 0);
+          const totalFt = todayMeals.reduce((sum: number, m: any) => sum + (Number(m.fat) || 0), 0);
           
           setNutritionCalories(totalCal);
           setNutritionProtein(totalProt);
@@ -181,8 +185,8 @@ export default function HomePage() {
         } else {
           // Default fallbacks if empty (stable user-scoped non-colliding IDs)
           const defaults = [
-            { id: `default-breakfast${userSuffix}`, mealType: "breakfast", foodName: "Organic Rolled Oats with Whey", calories: 310, protein: 32, carbs: 34, fat: 4 },
-            { id: `default-lunch${userSuffix}`, mealType: "lunch", foodName: "Grilled Chicken Breast & Jasmine Rice", calories: 450, protein: 50, carbs: 44, fat: 5 },
+            { id: `default-breakfast${userSuffix}`, mealType: "breakfast", foodName: "Organic Rolled Oats with Whey", calories: 310, protein: 32, carbs: 34, fat: 4, loggedAt: todayDateStr },
+            { id: `default-lunch${userSuffix}`, mealType: "lunch", foodName: "Grilled Chicken Breast & Jasmine Rice", calories: 450, protein: 50, carbs: 44, fat: 5, loggedAt: todayDateStr },
           ];
           localStorage.setItem("fitforge_meals", JSON.stringify(defaults));
           setNutritionCalories(760);
