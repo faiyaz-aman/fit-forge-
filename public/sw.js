@@ -43,6 +43,11 @@ self.addEventListener("activate", (event) => {
 
 // Fetch Event with dynamic local fallback for offline logging support
 self.addEventListener("fetch", (event) => {
+  // Never intercept page navigations to allow standard redirects, auth checks, and Safe Browsing
+  if (event.request.mode === "navigate") {
+    return;
+  }
+
   event.respondWith(
     caches.match(event.request).then((cachedResponse) => {
       return cachedResponse || fetch(event.request);
