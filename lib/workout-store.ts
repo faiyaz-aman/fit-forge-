@@ -1,5 +1,13 @@
 "use client";
 
+import { 
+  syncWorkoutPlan, 
+  deactivateActivePlan, 
+  syncWorkoutSession, 
+  syncSetLogDirect 
+} from "./supabase-db";
+import { getLocalDateString } from "./utils";
+
 // TypeScript interfaces for the FitForge workout system
 
 export interface WorkoutPlan {
@@ -123,6 +131,11 @@ export function savePlan(plan: WorkoutPlan, days: PlanDay[], exercises: PlanExer
   // Save days and exercises
   setStorageItem(KEYS.DAYS, days);
   setStorageItem(KEYS.EXERCISES, exercises);
+
+  // Sync to Supabase cloud in the background
+  syncWorkoutPlan(activePlan, days, exercises).catch(err => 
+    console.error("Cloud plan sync failed:", err)
+  );
 }
 
 export function getActivePlan(): { plan: WorkoutPlan; days: PlanDay[]; exercises: PlanExercise[] } | null {
@@ -144,6 +157,11 @@ export function deactivatePlan(): void {
   if (plan) {
     plan.isActive = false;
     setStorageItem(KEYS.PLAN, plan);
+
+    // Sync to Supabase cloud in the background
+    deactivateActivePlan(plan.id).catch(err => 
+      console.error("Cloud plan deactivation failed:", err)
+    );
   }
 }
 
@@ -169,7 +187,7 @@ export function getTodayWorkout(): PlanDay | null {
   const { days, exercises } = active;
   
   // Check if there is already an in-progress or completed session for today
-  const todayStr = new Date().toISOString().split("T")[0]; // YYYY-MM-DD
+  const todayStr = getLocalDateString(); // YYYY-MM-DD
   const sessions = getStorageItem<WorkoutSession[]>(KEYS.SESSIONS, []);
   const todaySession = sessions.find(s => s.scheduledDate === todayStr && s.status !== "skipped");
   
@@ -238,7 +256,7 @@ export function getNextWorkoutDay(): PlanDay | null {
 export function startSession(planDayId: string): WorkoutSession {
   const active = getActivePlan();
   const sessions = getStorageItem<WorkoutSession[]>(KEYS.SESSIONS, []);
-  const todayStr = new Date().toISOString().split("T")[0];
+  const todayStr = getLocalDateString();
   
   // Check if session already exists for today that is in_progress
   const existing = sessions.find(s => s.scheduledDate === todayStr && s.status === "in_progress");
@@ -333,7 +351,14 @@ export function startSession(planDayId: string): WorkoutSession {
   setStorageItem(KEYS.EXERCISE_LOGS, [...allExLogs, ...newExerciseLogs]);
   setStorageItem(KEYS.SET_LOGS, [...allSetLogs, ...newSetLogs]);
   
-  return { ...newSession, logs: newExerciseLogs.map(l => ({ ...l, sets: newSetLogs.filter(s => s.exerciseLogId === l.id) })) };
+  const fullSession = { ...newSession, logs: newExerciseLogs.map(l => ({ ...l, sets: newSetLogs.filter(s => s.exerciseLogId === l.id) })) };
+  
+  // Sync to Supabase cloud in the background
+  syncWorkoutSession(fullSession).catch(err => 
+    console.error("Cloud session start failed:", err)
+  );
+
+  return fullSession;
 }
 
 function loadSessionFullData(session: WorkoutSession): WorkoutSession {
@@ -351,13 +376,21 @@ function loadSessionFullData(session: WorkoutSession): WorkoutSession {
 
 export function saveSetLog(setId: string, updates: Partial<SetLog>): void {
   const allSetLogs = getStorageItem<SetLog[]>(KEYS.SET_LOGS, []);
+  let updatedLog: SetLog | undefined;
   const updated = allSetLogs.map(s => {
     if (s.id === setId) {
-      return { ...s, ...updates };
+      updatedLog = { ...s, ...updates };
+      return updatedLog;
     }
     return s;
   });
   setStorageItem(KEYS.SET_LOGS, updated);
+
+  if (updatedLog) {
+    syncSetLogDirect(updatedLog).catch(err => 
+      console.error("Cloud set log sync failed:", err)
+    );
+  }
 }
 
 export function completeSession(
@@ -389,8 +422,14 @@ export function completeSession(
     throw new Error(`Session with ID ${sessionId} not found`);
   }
   
-  // Make sure any uncompleted set is marked as completed or deleted? We keep them as logged
-  return loadSessionFullData(completed);
+  const fullSession = loadSessionFullData(completed);
+
+  // Sync to Supabase cloud in the background
+  syncWorkoutSession(fullSession).catch(err => 
+    console.error("Cloud session complete failed:", err)
+  );
+
+  return fullSession;
 }
 
 export function getSessionsByDate(dateStr: string): WorkoutSession[] {
@@ -400,7 +439,7 @@ export function getSessionsByDate(dateStr: string): WorkoutSession[] {
 }
 
 export function isTodayCompleted(): boolean {
-  const todayStr = new Date().toISOString().split("T")[0];
+  const todayStr = getLocalDateString();
   const sessions = getStorageItem<WorkoutSession[]>(KEYS.SESSIONS, []);
   return sessions.some(s => s.scheduledDate === todayStr && s.status === "completed");
 }
@@ -657,7 +696,7 @@ export function getStreak(): number {
   let checkDate = new Date(today);
   
   // Format check date as YYYY-MM-DD
-  const formatDate = (d: Date) => d.toISOString().split("T")[0];
+  const formatDate = (d: Date) => getLocalDateString(d);
   
   // If user completed a workout today
   if (uniqueDates.includes(formatDate(checkDate))) {

@@ -24,61 +24,227 @@ import {
   getStreak,
   getExerciseHistory,
 } from "@/lib/workout-store";
+import { hydrateLocalDataFromCloud, syncWaterLogs, getWaterLogsCloud, getNutritionLogsCloud } from "@/lib/supabase-db";
+import { getLocalDateString } from "@/lib/utils";
 
 export default function HomePage() {
-  const [waterMl, setWaterMl] = useState(1250);
-  const waterGoal = 3200;
+  const [waterMl, setWaterMl] = useState(0);
+  const [waterGoal, setWaterGoal] = useState(3200);
 
   const [activePlan, setActivePlan] = useState<any>(null);
+  const [profileName, setProfileName] = useState("Champ");
   const [todayWorkout, setTodayWorkout] = useState<any>(null);
   const [completedToday, setCompletedToday] = useState(false);
-  const [streak, setStreak] = useState(0);
-  const [recentRecords, setRecentRecords] = useState<any[]>([]);
+  const [nutritionCalories, setNutritionCalories] = useState(0);
+  const [nutritionProtein, setNutritionProtein] = useState(0);
+  const [nutritionCarbs, setNutritionCarbs] = useState(0);
+  const [nutritionFat, setNutritionFat] = useState(0);
 
+  const [nutritionGoalCalories, setNutritionGoalCalories] = useState(2800);
+  const [nutritionGoalProtein, setNutritionGoalProtein] = useState(180);
+  const [nutritionGoalCarbs, setNutritionGoalCarbs] = useState(340);
+  const [nutritionGoalFat, setNutritionGoalFat] = useState(80);
+  const [streak, setStreak] = useState(0);
+
+  // Load today's water and nutrition on mount
   useEffect(() => {
-    // 1. Get active plan
-    const active = getActivePlan();
-    if (active) {
-      setActivePlan(active.plan);
-    }
-    
-    // 2. Get today's workout
-    const todayW = getTodayWorkout();
-    if (todayW) {
-      setTodayWorkout(todayW);
-    }
-    
-    // 3. Completed status
-    setCompletedToday(isTodayCompleted());
-    
-    // 4. Streak
-    setStreak(getStreak());
-    
-    // 5. Compute recent records dynamically from real logs
-    const lifts = ["Barbell Bench Press", "Barbell Back Squat", "Romanian Deadlift", "Weighted Pull-Up", "Dumbbell Shoulder Press"];
-    const records: any[] = [];
-    lifts.forEach(liftName => {
-      const history = getExerciseHistory(liftName, 1);
-      if (history.length > 0) {
-        const lastSession = history[0];
-        const maxWeightSet = lastSession.sets.reduce((max, s) => s.actualWeight > max.actualWeight ? s : max, lastSession.sets[0]);
-        if (maxWeightSet) {
-          records.push({
-            name: liftName,
-            weight: maxWeightSet.actualWeight,
-            reps: maxWeightSet.actualReps
-          });
+    const todayStr = getLocalDateString();
+
+    // Synchronous local state load to prevent 0-value flickers
+    try {
+      const storedWater = localStorage.getItem("fitforge_water_logs");
+      if (storedWater) {
+        const list = JSON.parse(storedWater);
+        const todayLog = list.find((l: any) => l.loggedAt === todayStr);
+        if (todayLog) setWaterMl(todayLog.amountMl);
+      } else {
+        setWaterMl(0);
+      }
+
+      const storedMeals = localStorage.getItem("fitforge_meals");
+      if (storedMeals) {
+        const meals = JSON.parse(storedMeals);
+        const totalCal = meals.reduce((sum: number, m: any) => sum + (Number(m.calories) || 0), 0);
+        const totalProt = meals.reduce((sum: number, m: any) => sum + (Number(m.protein) || 0), 0);
+        const totalCrbs = meals.reduce((sum: number, m: any) => sum + (Number(m.carbs) || 0), 0);
+        const totalFt = meals.reduce((sum: number, m: any) => sum + (Number(m.fat) || 0), 0);
+        
+        setNutritionCalories(totalCal);
+        setNutritionProtein(totalProt);
+        setNutritionCarbs(totalCrbs);
+        setNutritionFat(totalFt);
+      }
+
+      const storedProfile = localStorage.getItem("fitforge-profile");
+      if (storedProfile) {
+        const profile = JSON.parse(storedProfile);
+        if (profile) {
+          if (profile.name) setProfileName(profile.name);
+          if (profile.targetCalories) setNutritionGoalCalories(Number(profile.targetCalories));
+          if (profile.targetProtein) setNutritionGoalProtein(Number(profile.targetProtein));
+          if (profile.targetCarbs) setNutritionGoalCarbs(Number(profile.targetCarbs));
+          if (profile.targetFat) setNutritionGoalFat(Number(profile.targetFat));
+          if (profile.targetWater) setWaterGoal(Number(profile.targetWater));
         }
       }
-    });
+    } catch (e) {}
     
-    if (records.length > 0) {
-      setRecentRecords(records);
-    }
+    // Background cloud water fetch
+    getWaterLogsCloud().then(cloudLogs => {
+      if (cloudLogs && cloudLogs.length > 0) {
+        try {
+          localStorage.setItem("fitforge_water_logs", JSON.stringify(cloudLogs));
+        } catch (e) {}
+        const todayLog = cloudLogs.find((l: any) => l.loggedAt === todayStr);
+        if (todayLog) setWaterMl(todayLog.amountMl);
+      }
+    }).catch(e => console.error("Cloud water fetch failed:", e));
+
+    // Background cloud nutrition fetch
+    getNutritionLogsCloud().then(cloudMeals => {
+      if (cloudMeals && cloudMeals.length > 0) {
+        try {
+          localStorage.setItem("fitforge_meals", JSON.stringify(cloudMeals));
+        } catch (e) {}
+        const totalCal = cloudMeals.reduce((sum: number, m: any) => sum + (Number(m.calories) || 0), 0);
+        const totalProt = cloudMeals.reduce((sum: number, m: any) => sum + (Number(m.protein) || 0), 0);
+        const totalCrbs = cloudMeals.reduce((sum: number, m: any) => sum + (Number(m.carbs) || 0), 0);
+        const totalFt = cloudMeals.reduce((sum: number, m: any) => sum + (Number(m.fat) || 0), 0);
+        
+        setNutritionCalories(totalCal);
+        setNutritionProtein(totalProt);
+        setNutritionCarbs(totalCrbs);
+        setNutritionFat(totalFt);
+      }
+    }).catch(e => console.error("Cloud nutrition fetch failed:", e));
+  }, []);
+
+  useEffect(() => {
+    const hydrateAndLoad = async () => {
+      let userIdSuffix = "";
+      try {
+        const { getAuthUserId } = await import("@/lib/supabase-db");
+        const userId = await getAuthUserId();
+        if (userId) userIdSuffix = `-${userId}`;
+      } catch (e) {}
+
+      // If we don't have profile or active plan locally, try to hydrate from cloud
+      let hasLocalProfile = null;
+      let hasLocalPlan = null;
+      try {
+        hasLocalProfile = localStorage.getItem("fitforge-profile");
+        hasLocalPlan = localStorage.getItem("fitforge_active_plan");
+      } catch (e) {}
+      
+      if (!hasLocalProfile || !hasLocalPlan) {
+        const success = await hydrateLocalDataFromCloud();
+        if (success) {
+          loadLocalStates(userIdSuffix);
+          return;
+        }
+      }
+      
+      loadLocalStates(userIdSuffix);
+    };
+
+    const loadLocalStates = (userSuffix = "") => {
+      // 0. Get user profile name and targets
+      try {
+        const storedProfile = localStorage.getItem("fitforge-profile");
+        if (storedProfile) {
+          const profile = JSON.parse(storedProfile);
+          if (profile) {
+            if (profile.name) setProfileName(profile.name);
+            if (profile.targetCalories) setNutritionGoalCalories(Number(profile.targetCalories));
+            if (profile.targetProtein) setNutritionGoalProtein(Number(profile.targetProtein));
+            if (profile.targetCarbs) setNutritionGoalCarbs(Number(profile.targetCarbs));
+            if (profile.targetFat) setNutritionGoalFat(Number(profile.targetFat));
+            if (profile.targetWater) setWaterGoal(Number(profile.targetWater));
+          }
+        }
+      } catch (e) {}
+
+      // 0.5. Get nutrition logs
+      try {
+        const storedMeals = localStorage.getItem("fitforge_meals");
+        if (storedMeals) {
+          const meals = JSON.parse(storedMeals);
+          const totalCal = meals.reduce((sum: number, m: any) => sum + (Number(m.calories) || 0), 0);
+          const totalProt = meals.reduce((sum: number, m: any) => sum + (Number(m.protein) || 0), 0);
+          const totalCrbs = meals.reduce((sum: number, m: any) => sum + (Number(m.carbs) || 0), 0);
+          const totalFt = meals.reduce((sum: number, m: any) => sum + (Number(m.fat) || 0), 0);
+          
+          setNutritionCalories(totalCal);
+          setNutritionProtein(totalProt);
+          setNutritionCarbs(totalCrbs);
+          setNutritionFat(totalFt);
+        } else {
+          // Default fallbacks if empty (stable user-scoped non-colliding IDs)
+          const defaults = [
+            { id: `default-breakfast${userSuffix}`, mealType: "breakfast", foodName: "Organic Rolled Oats with Whey", calories: 310, protein: 32, carbs: 34, fat: 4 },
+            { id: `default-lunch${userSuffix}`, mealType: "lunch", foodName: "Grilled Chicken Breast & Jasmine Rice", calories: 450, protein: 50, carbs: 44, fat: 5 },
+          ];
+          localStorage.setItem("fitforge_meals", JSON.stringify(defaults));
+          setNutritionCalories(760);
+          setNutritionProtein(82);
+          setNutritionCarbs(78);
+          setNutritionFat(9);
+        }
+      } catch (e) {}
+
+      // 1. Get active plan
+      const active = getActivePlan();
+      if (active) {
+        setActivePlan(active.plan);
+      }
+      
+      // 2. Get today's workout
+      const todayW = getTodayWorkout();
+      if (todayW) {
+        setTodayWorkout(todayW);
+      }
+      
+      // 3. Completed status
+      setCompletedToday(isTodayCompleted());
+      
+      // 4. Streak
+      setStreak(getStreak());
+    };
+
+    hydrateAndLoad();
   }, []);
 
   const handleAddWater = (amount: number) => {
-    setWaterMl((prev) => Math.min(prev + amount, 6000));
+    setWaterMl((prev) => {
+      const next = Math.min(prev + amount, 6000);
+      const todayStr = getLocalDateString();
+      
+      // Update local storage
+      try {
+        const stored = localStorage.getItem("fitforge_water_logs");
+        const list = stored ? JSON.parse(stored) : [];
+        const todayIndex = list.findIndex((l: any) => l.loggedAt === todayStr);
+        
+        let todayLog;
+        if (todayIndex > -1) {
+          list[todayIndex].amountMl = next;
+          todayLog = list[todayIndex];
+        } else {
+          todayLog = {
+            id: `water-${Date.now()}`,
+            amountMl: next,
+            loggedAt: todayStr,
+          };
+          list.push(todayLog);
+        }
+        localStorage.setItem("fitforge_water_logs", JSON.stringify(list));
+        
+        // Sync to cloud in background
+        syncWaterLogs([todayLog]).catch(e => console.error("Cloud water sync failed:", e));
+      } catch (e) {}
+      
+      return next;
+    });
   };
 
   const waterPercent = Math.min((waterMl / waterGoal) * 100, 100);
@@ -91,7 +257,7 @@ export default function HomePage() {
       {/* Hero Greeting */}
       <div className="flex flex-col space-y-1 select-none">
         <h2 className="text-xl font-bold tracking-tight text-foreground md:text-2xl">
-          Forge Your Body, <span className="text-primary">Champ</span>
+          Forge Your Body, <span className="text-primary">{profileName}</span>
         </h2>
         <p className="text-xs text-muted-foreground">
           {dateStr} — Consistency builds champions. You are on a {streak}-day streak!
@@ -153,7 +319,7 @@ export default function HomePage() {
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-3 pb-4">
-                <div className="space-y-2 border-l-2 border-border/80 pl-4 py-1">
+                <div className="space-y-2 border-l-2 border-bonprder/80 pl-4 py-1">
                   {todayWorkout.exercises?.map((ex: any, idx: number) => (
                     <div key={idx} className="flex items-center justify-between text-xs text-muted-foreground">
                       <span className="font-semibold text-foreground">{idx + 1}. {ex.exerciseName}</span>
@@ -298,79 +464,41 @@ export default function HomePage() {
                     Energy Target
                   </span>
                   <span className="font-mono font-bold text-foreground tabular-nums">
-                    1,200 / 2,500 kcal
+                    {nutritionCalories.toLocaleString()} / {nutritionGoalCalories.toLocaleString()} kcal
                   </span>
                 </div>
                 <div className="h-1.5 w-full bg-secondary rounded-full overflow-hidden">
-                  <div className="h-full bg-primary rounded-full" style={{ width: "48%" }} />
+                  <div
+                    className="h-full bg-primary rounded-full transition-all duration-500"
+                    style={{ width: `${Math.min((nutritionCalories / nutritionGoalCalories) * 100, 100)}%` }}
+                  />
                 </div>
               </div>
 
               {/* Macros Breakdown */}
               <div className="space-y-2 pt-2 border-t border-border/40">
                 <div className="flex items-center justify-between text-xs">
-                  <span className="text-muted-foreground">Protein (Goal: 150g)</span>
+                  <span className="text-muted-foreground">Protein (Goal: {nutritionGoalProtein}g)</span>
                   <span className="font-mono font-semibold text-foreground tabular-nums">
-                    80g <span className="text-muted-foreground text-[10px]">({Math.round((80 / 150) * 100)}%)</span>
+                    {nutritionProtein}g <span className="text-muted-foreground text-[10px]">({Math.round((nutritionProtein / nutritionGoalProtein) * 100)}%)</span>
                   </span>
                 </div>
                 <div className="flex items-center justify-between text-xs">
-                  <span className="text-muted-foreground">Carbohydrates (Goal: 250g)</span>
+                  <span className="text-muted-foreground">Carbohydrates (Goal: {nutritionGoalCarbs}g)</span>
                   <span className="font-mono font-semibold text-foreground tabular-nums">
-                    120g <span className="text-muted-foreground text-[10px]">({Math.round((120 / 250) * 100)}%)</span>
+                    {nutritionCarbs}g <span className="text-muted-foreground text-[10px]">({Math.round((nutritionCarbs / nutritionGoalCarbs) * 100)}%)</span>
                   </span>
                 </div>
                 <div className="flex items-center justify-between text-xs">
-                  <span className="text-muted-foreground">Fats (Goal: 70g)</span>
+                  <span className="text-muted-foreground">Fats (Goal: {nutritionGoalFat}g)</span>
                   <span className="font-mono font-semibold text-foreground tabular-nums">
-                    35g <span className="text-muted-foreground text-[10px]">({Math.round((35 / 70) * 100)}%)</span>
+                    {nutritionFat}g <span className="text-muted-foreground text-[10px]">({Math.round((nutritionFat / nutritionGoalFat) * 100)}%)</span>
                   </span>
                 </div>
               </div>
             </CardContent>
           </Card>
 
-          {/* Daily Rotating Tip */}
-          <Card className="border-border bg-card bg-gradient-to-br from-primary/[0.02] to-transparent">
-            <CardHeader className="pb-2">
-              <div className="flex items-center gap-1.5 text-xs text-primary font-bold">
-                <BookOpen className="w-3.5 h-3.5" />
-                <span>COACH TIP OF THE DAY</span>
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-2 pb-4">
-              <blockquote className="text-xs italic text-foreground/90 font-medium">
-                "The key to hypertrophy is mechanical tension and progressive overload, focusing on controlled eccentrics."
-              </blockquote>
-              <p className="text-[10px] text-muted-foreground leading-relaxed">
-                <span className="font-bold text-foreground">Application:</span> Aim for a 2-3 second eccentric (lowering) phase on all major lifts, ensuring you control the weight rather than letting gravity pull it down.
-              </p>
-            </CardContent>
-            <CardFooter className="pt-0 border-t border-border/40 py-2 text-[10px] font-mono text-muted-foreground justify-between">
-              <span>Author: Jeff Nippard</span>
-              <span>Category: Hypertrophy</span>
-            </CardFooter>
-          </Card>
-
-          {/* Hall of Fame / Recent PRs */}
-          <Card className="border-border bg-card">
-            <CardHeader className="pb-2">
-              <div className="flex items-center gap-1.5 text-xs text-primary font-bold">
-                <Award className="w-3.5 h-3.5" />
-                <span>RECENT RECORDS</span>
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-3 pb-4">
-              {recentRecords.map((rec, idx) => (
-                <div key={idx} className="flex items-center justify-between text-xs">
-                  <span className="font-semibold text-foreground">{rec.name}</span>
-                  <span className="font-mono text-primary font-bold">
-                    {rec.weight} kg × {rec.reps} Rep{rec.reps > 1 ? "s" : ""}
-                  </span>
-                </div>
-              ))}
-            </CardContent>
-          </Card>
         </div>
       </div>
     </div>

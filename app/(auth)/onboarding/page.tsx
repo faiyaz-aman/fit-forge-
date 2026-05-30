@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "@/components/ui/card";
 import { Slider } from "@/components/ui/slider";
 import { ArrowLeft, ArrowRight, Check, Activity, Dumbbell, Compass, Heart } from "lucide-react";
+import { syncProfile } from "@/lib/supabase-db";
 
 export default function OnboardingPage() {
   const [step, setStep] = useState(1);
@@ -32,8 +33,33 @@ export default function OnboardingPage() {
   };
 
   const handleSubmit = async () => {
-    // API action to save profile
-    console.log("Onboarding profile saved:", formData);
+    try {
+      localStorage.setItem("fitforge-profile", JSON.stringify(formData));
+      
+      // Seed default measurements
+      const initialMeasurements = {
+        weight: formData.weightKg,
+        neck: 38.0,
+        waist: 84.0,
+        hips: 92.0,
+        chest: 102.0,
+        leftArm: 37.0,
+        rightArm: 37.2,
+        leftThigh: 58.0,
+        rightThigh: 58.2,
+        leftCalf: 38.5,
+        rightCalf: 38.5,
+      };
+      localStorage.setItem("fitforge-measurements", JSON.stringify(initialMeasurements));
+    } catch (e) {}
+
+    // Cloud sync
+    try {
+      await syncProfile(formData);
+    } catch (e) {
+      console.error("Cloud onboarding profile sync failed:", e);
+    }
+    
     window.location.href = "/home";
   };
 

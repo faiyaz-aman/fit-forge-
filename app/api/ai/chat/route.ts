@@ -71,7 +71,7 @@ export async function POST(req: Request) {
     const geminiKey = process.env.GEMINI_API_KEY;
     if (geminiKey && !geminiKey.includes("dummy") && geminiKey.trim() !== "") {
       try {
-        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiKey}`, {
+        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiKey}`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -81,7 +81,10 @@ export async function POST(req: Request) {
           })
         });
 
-        if (response.ok) {
+        if (!response.ok) {
+          const errText = await response.text();
+          console.error(`Gemini Chat API call failed with status ${response.status}:`, errText);
+        } else {
           const resData = await response.json();
           const aiText = resData.candidates[0].content.parts[0].text;
           

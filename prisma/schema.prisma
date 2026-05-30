@@ -1,7 +1,5 @@
 datasource db {
   provider  = "postgresql"
-  url       = env("DATABASE_URL")
-  directUrl = env("DIRECT_URL")
 }
 
 generator client {
@@ -358,10 +356,25 @@ model StreakRecord {
 }
 
 model Tip {
-  id           String @id @default(uuid())
-  category     String // "Hypertrophy", "Strength", "Nutrition", "Mindset", "Recovery"
-  sourceAuthor String // e.g. "Jeff Nippard"
-  content      String
-  explanation  String
-  application  String
+  id             String   @id
+  category       String   // e.g. "Training Science"
+  subcategory    String   @default("")
+  tier           String   @default("beginner") // beginner, intermediate, advanced
+  tags           String[]
+  title          String
+  hook           String   @default("")
+  summary        String
+  whatIsIt       String   @default("")
+  whyItMatters   String   @default("")
+  howItWorks     String   @default("")
+  howToApply     Json     @default("{}") // Stores the beginner, intermediate, advanced application guide
+  commonMistakes String[]
+  mythVsReality  Json     @default("{}") // Stores myth, reality, whyPeopleBelieveIt
+  example        String   @default("")
+  visualConcept  String   @default("")
+  relatedCards   String[]
+  keyTakeaway    String   @default("")
+  author         String
+  references     String[]
+  evidenceLevel  String   @default("strong") // strong, moderate, anecdotal
 }

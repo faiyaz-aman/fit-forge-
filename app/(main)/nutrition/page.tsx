@@ -1,9 +1,11 @@
 "use client";
 
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { syncNutritionLog, deleteNutritionLogCloud, getNutritionLogsCloud } from "@/lib/supabase-db";
+import { getLocalDateString } from "@/lib/utils";
 import {
   Utensils,
   Plus,
@@ -18,26 +20,13 @@ import {
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
-// Seeded quick add foods
-const quickAddFoods = [
-  { name: "Grilled Chicken Breast (150g)", calories: 250, protein: 46, carbs: 0, fat: 5 },
-  { name: "Cooked Jasmine Rice (150g)", calories: 200, protein: 4, carbs: 44, fat: 0 },
-  { name: "Large Whole Egg (1 Pc)", calories: 75, protein: 6.5, carbs: 0.5, fat: 5 },
-  { name: "Whey Protein Shake (1 Scoop)", calories: 120, protein: 25, carbs: 2, fat: 1 },
-  { name: "Organic Rolled Oats (50g)", calories: 190, protein: 7, carbs: 32, fat: 3 },
-  { name: "Canned Albacore Tuna (100g)", calories: 110, protein: 23, carbs: 0, fat: 1.5 },
-];
+
 
 export default function NutritionPage() {
-  const [logs, setLogs] = useState<any[]>([
-    { id: "1", mealType: "breakfast", foodName: "Organic Rolled Oats with Whey", calories: 310, protein: 32, carbs: 34, fat: 4 },
-    { id: "2", mealType: "lunch", foodName: "Grilled Chicken Breast & Jasmine Rice", calories: 450, protein: 50, carbs: 44, fat: 5 },
-  ]);
+  const [logs, setLogs] = useState<any[]>([]);
 
   const [activeMealType, setActiveMealType] = useState("breakfast");
   const [showAddModal, setShowAddModal] = useState(false);
-  const [showPhotoScanner, setShowPhotoScanner] = useState(false);
-  const [scanning, setScanning] = useState(false);
 
   // Form states
   const [foodName, setFoodName] = useState("");
@@ -46,7 +35,76 @@ export default function NutritionPage() {
   const [carbs, setCarbs] = useState("");
   const [fat, setFat] = useState("");
 
-  const fileInputRef = useRef<HTMLInputElement>(null);
+
+
+  // Load from localStorage and cloud on mount
+  useEffect(() => {
+    const initializeMeals = async () => {
+      let userIdSuffix = "";
+      try {
+        const { getAuthUserId } = await import("@/lib/supabase-db");
+        const userId = await getAuthUserId();
+        if (userId) userIdSuffix = `-${userId}`;
+      } catch (e) {}
+
+      // Load dynamic targets from profile
+      try {
+        const storedProfile = localStorage.getItem("fitforge-profile");
+        if (storedProfile) {
+          const profile = JSON.parse(storedProfile);
+          if (profile) {
+            if (profile.targetCalories) setGoalCalories(Number(profile.targetCalories));
+            if (profile.targetProtein) setGoalProtein(Number(profile.targetProtein));
+            if (profile.targetCarbs) setGoalCarbs(Number(profile.targetCarbs));
+            if (profile.targetFat) setGoalFat(Number(profile.targetFat));
+          }
+        }
+      } catch (e) {}
+
+      try {
+        const stored = localStorage.getItem("fitforge_meals");
+        if (stored) {
+          setLogs(JSON.parse(stored));
+        } else {
+          // Seed default fallback with stable, non-colliding IDs scoped to the user
+          const defaults = [
+            { id: `default-breakfast${userIdSuffix}`, mealType: "breakfast", foodName: "Organic Rolled Oats with Whey", calories: 310, protein: 32, carbs: 34, fat: 4, loggedAt: getLocalDateString() },
+            { id: `default-lunch${userIdSuffix}`, mealType: "lunch", foodName: "Grilled Chicken Breast & Jasmine Rice", calories: 450, protein: 50, carbs: 44, fat: 5, loggedAt: getLocalDateString() },
+          ];
+          setLogs(defaults);
+          localStorage.setItem("fitforge_meals", JSON.stringify(defaults));
+        }
+      } catch (e) {}
+
+      // Background sync from Supabase
+      getNutritionLogsCloud().then(cloudMeals => {
+        if (cloudMeals && cloudMeals.length > 0) {
+          setLogs(cloudMeals);
+          try {
+            localStorage.setItem("fitforge_meals", JSON.stringify(cloudMeals));
+          } catch (e) {}
+        }
+      }).catch(e => console.error("Failed to fetch nutrition from cloud:", e));
+    };
+
+    initializeMeals();
+  }, []);
+
+  // Helper to persist logs locally and sync in background to Supabase
+  const updateLogsAndSync = (newLogs: any[], mealToSync?: any, action: "upsert" | "delete" = "upsert") => {
+    setLogs(newLogs);
+    try {
+      localStorage.setItem("fitforge_meals", JSON.stringify(newLogs));
+    } catch (e) {}
+
+    if (mealToSync) {
+      if (action === "upsert") {
+        syncNutritionLog(mealToSync).catch(e => console.error("Cloud nutrition sync failed:", e));
+      } else if (action === "delete") {
+        deleteNutritionLogCloud(mealToSync.id).catch(e => console.error("Cloud nutrition delete failed:", e));
+      }
+    }
+  };
 
   // Total macro calculations
   const totalCalories = logs.reduce((sum, log) => sum + log.calories, 0);
@@ -55,26 +113,27 @@ export default function NutritionPage() {
   const totalFat = logs.reduce((sum, log) => sum + log.fat, 0);
 
   // Core Goal profiles (Bulk profile defaults)
-  const goalCalories = 2800;
-  const goalProtein = 180;
-  const goalCarbs = 340;
-  const goalFat = 80;
+  const [goalCalories, setGoalCalories] = useState(2800);
+  const [goalProtein, setGoalProtein] = useState(180);
+  const [goalCarbs, setGoalCarbs] = useState(340);
+  const [goalFat, setGoalFat] = useState(80);
 
   const handleAddLog = (e: React.FormEvent) => {
     e.preventDefault();
     if (!foodName || !calories) return;
 
     const newLog = {
-      id: Math.random().toString(),
+      id: `meal-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
       mealType: activeMealType,
       foodName,
       calories: Number(calories),
       protein: Number(protein) || 0,
       carbs: Number(carbs) || 0,
       fat: Number(fat) || 0,
+      loggedAt: getLocalDateString(),
     };
 
-    setLogs((prev) => [...prev, newLog]);
+    updateLogsAndSync([...logs, newLog], newLog, "upsert");
     setFoodName("");
     setCalories("");
     setProtein("");
@@ -85,71 +144,22 @@ export default function NutritionPage() {
 
   const handleQuickAdd = (food: any) => {
     const newLog = {
-      id: Math.random().toString(),
+      id: `meal-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
       mealType: activeMealType,
       foodName: food.name,
       calories: food.calories,
       protein: food.protein,
       carbs: food.carbs,
       fat: food.fat,
+      loggedAt: getLocalDateString(),
     };
-    setLogs((prev) => [...prev, newLog]);
+    updateLogsAndSync([...logs, newLog], newLog, "upsert");
   };
 
   const handleDeleteLog = (id: string) => {
-    setLogs((prev) => prev.filter((log) => log.id !== id));
-  };
-
-  const triggerPhotoSelect = () => {
-    fileInputRef.current?.click();
-  };
-
-  const handlePhotoScan = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      const file = e.target.files[0];
-      setScanning(true);
-      setShowPhotoScanner(true);
-
-      const reader = new FileReader();
-      reader.onload = async () => {
-        const base64Str = reader.result as string;
-
-        try {
-          const response = await fetch("/api/ai/analyze-meal-photo", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              image: base64Str,
-              fileName: file.name,
-            }),
-          });
-
-          if (response.ok) {
-            const data = await response.json();
-            if (data.success && data.parsed) {
-              const parsed = data.parsed;
-              const newLog = {
-                id: Math.random().toString(),
-                mealType: activeMealType,
-                foodName: `${parsed.foodName} (${parsed.estimatedGrams}g)`,
-                calories: parsed.calories,
-                protein: parsed.protein,
-                carbs: parsed.carbs,
-                fat: parsed.fat,
-              };
-              setLogs((prev) => [...prev, newLog]);
-            }
-          }
-        } catch (err) {
-          console.error("AI photo scan failed:", err);
-        } finally {
-          setScanning(false);
-          setShowPhotoScanner(false);
-        }
-      };
-
-      reader.readAsDataURL(file);
-    }
+    const mealToDelete = logs.find(log => log.id === id);
+    const remaining = logs.filter((log) => log.id !== id);
+    updateLogsAndSync(remaining, mealToDelete, "delete");
   };
 
   const filterLogs = (type: string) => logs.filter((log) => log.mealType === type);
@@ -162,7 +172,7 @@ export default function NutritionPage() {
           Nutrition & Macro Diary
         </h2>
         <p className="text-xs text-muted-foreground">
-          Track energy targets, log meal sections, and let our GPT-4 Vision camera parse plate photos to calculate calories.
+          Track energy targets and log meal sections to forge your physique.
         </p>
       </div>
 
@@ -248,10 +258,8 @@ export default function NutritionPage() {
         </Card>
       </div>
 
-      {/* Main Grid: Columns for Categories & Fast Seed selectors */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Meal Categories Left Column */}
-        <div className="lg:col-span-2 space-y-6">
+      {/* Main Grid: Centered Single Column for Meal Categories */}
+      <div className="max-w-2xl mx-auto space-y-6">
           {["breakfast", "lunch", "dinner", "snack"].map((meal) => {
             const mealLogs = filterLogs(meal);
             const mealCal = mealLogs.reduce((sum, log) => sum + log.calories, 0);
@@ -319,68 +327,6 @@ export default function NutritionPage() {
               </Card>
             );
           })}
-        </div>
-
-        {/* Fast Add & AI Scanning Right Column */}
-        <div className="space-y-6 select-none">
-          {/* AI Scanning Cam Panel */}
-          <Card className="border-border bg-card bg-gradient-to-br from-primary/[0.02] to-transparent">
-            <CardHeader className="pb-3">
-              <div className="flex items-center gap-1.5 text-xs text-primary font-bold">
-                <Sparkles className="w-3.5 h-3.5" />
-                <span>AI MEAL PHOTO SCANNER</span>
-              </div>
-              <CardDescription className="text-xs">
-                Snap or upload a meal photo to let GPT-4 Vision estimate calories and macros instantly.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="pb-4">
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/*"
-                onChange={handlePhotoScan}
-                className="hidden"
-              />
-              <Button
-                onClick={triggerPhotoSelect}
-                className="w-full flex items-center justify-center gap-2 h-11"
-              >
-                <Camera className="w-4 h-4" />
-                Scan Plate Photo
-              </Button>
-            </CardContent>
-          </Card>
-
-          {/* Quick Seed Foods */}
-          <Card className="border-border bg-card">
-            <CardHeader className="pb-2">
-              <div className="flex items-center gap-1.5 text-xs text-primary font-bold">
-                <Apple className="w-3.5 h-3.5" />
-                <span>FAST ADD BASICS</span>
-              </div>
-              <CardDescription className="text-[10px] text-muted-foreground">
-                Tap to append standard bodybuilder foods into the active meal category (Active: <span className="font-bold text-primary uppercase">{activeMealType}</span>).
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="p-3 space-y-1.5">
-              {quickAddFoods.map((food, idx) => (
-                <button
-                  key={idx}
-                  onClick={() => handleQuickAdd(food)}
-                  className="flex items-center justify-between w-full p-2 rounded-lg border border-border bg-[#141416]/50 hover:bg-secondary/40 transition-colors text-left text-xs cursor-pointer group"
-                >
-                  <span className="font-semibold text-foreground group-hover:text-primary transition-colors">
-                    {food.name.split(" ")[0]} {food.name.split(" ")[1]}
-                  </span>
-                  <span className="font-mono text-muted-foreground font-bold tabular-nums">
-                    {food.calories} kcal
-                  </span>
-                </button>
-              ))}
-            </CardContent>
-          </Card>
-        </div>
       </div>
 
       {/* POPUP FOR ADD CUSTOM MEAL FORM */}
@@ -492,38 +438,7 @@ export default function NutritionPage() {
       </AnimatePresence>
 
       {/* POPUP FOR AI PHOTO PARSING OVERLAY */}
-      <AnimatePresence>
-        {showPhotoScanner && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-[#0A0A0B]/85 backdrop-blur-md z-50 flex items-center justify-center p-4"
-          >
-            <motion.div
-              initial={{ scale: 0.9, y: 15 }}
-              animate={{ scale: 1, y: 0 }}
-              exit={{ scale: 0.9, y: 15 }}
-              className="bg-card border border-border rounded-2xl w-full max-w-xs p-6 flex flex-col items-center justify-center text-center space-y-6 shadow-2xl"
-            >
-              {/* Spinning parser animation */}
-              <div className="relative flex items-center justify-center select-none">
-                <div className="w-16 h-16 rounded-full border border-border border-t-primary animate-spin" />
-                <Camera className="w-5 h-5 text-primary absolute animate-pulse" />
-              </div>
 
-              <div className="space-y-2">
-                <h3 className="text-sm font-bold uppercase tracking-widest text-primary">
-                  {scanning ? "AI SCANNING MEAL PHOTO..." : "PARSING COMPLETE!"}
-                </h3>
-                <p className="text-[11px] text-muted-foreground leading-relaxed">
-                  Our sports nutrition AI is analyzing pixels, estimating portion weights, and calculating macronutrient coefficients. Stand by!
-                </p>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
     </div>
   );
 }

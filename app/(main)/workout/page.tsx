@@ -2,7 +2,7 @@
 
 import React, { useState, useRef, useEffect } from "react";
 import Link from "next/link";
-import { getActivePlan, savePlan, deactivatePlan } from "@/lib/workout-store";
+import { getActivePlan, savePlan, deactivatePlan, getCycleDayNumber, isTodayCompleted } from "@/lib/workout-store";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -48,6 +48,8 @@ const standardExercises = [
 
 export default function WorkoutPage() {
   const [activePlan, setActivePlan] = useState<any>(null); // Seed active plan if exists
+  const [currentCycleDay, setCurrentCycleDay] = useState<number>(1);
+  const [todayDone, setTodayDone] = useState<boolean>(false);
   const [uploadState, setUploadState] = useState<"idle" | "parsing" | "preview" | "active">("idle");
   const [dragActive, setDragActive] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -86,6 +88,8 @@ export default function WorkoutPage() {
       };
       setProgramData(mapped);
       setActivePlan(mapped);
+      setCurrentCycleDay(getCycleDayNumber());
+      setTodayDone(isTodayCompleted());
       setUploadState("active");
     }
   }, []);
@@ -634,13 +638,13 @@ export default function WorkoutPage() {
                   <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
                     Program Title
                   </label>
-                  <Input value={programData.planName} onChange={(e) => handlePlanNameChange(e.target.value)} />
+                  <Input value={programData.planName || ""} onChange={(e) => handlePlanNameChange(e.target.value)} />
                 </div>
                 <div className="space-y-1">
                   <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
                     Routine Split Type
                   </label>
-                  <Input value={programData.splitType} onChange={(e) => handleSplitTypeChange(e.target.value)} />
+                  <Input value={programData.splitType || ""} onChange={(e) => handleSplitTypeChange(e.target.value)} />
                 </div>
                 <div className="space-y-1">
                   <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
@@ -648,7 +652,7 @@ export default function WorkoutPage() {
                   </label>
                   <Input
                     type="number"
-                    value={programData.durationWeeks}
+                    value={programData.durationWeeks ?? ""}
                     onChange={(e) => handleDurationChange(Number(e.target.value))}
                   />
                 </div>
@@ -686,16 +690,17 @@ export default function WorkoutPage() {
                           {/* Row 1: Lift Selector and Deletion */}
                           <div className="flex items-center justify-between gap-2">
                             <select
-                              value={ex.name}
+                              value={ex.name || ""}
                               onChange={(e) => handleExerciseChange(dayIdx, exIdx, "name", e.target.value)}
                               className="text-xs font-semibold text-foreground bg-secondary px-2.5 py-1 rounded border border-border max-w-[160px] focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary"
                             >
+                              <option value="" disabled>Select exercise...</option>
                               {standardExercises.map((se) => (
                                 <option key={se} value={se}>
                                   {se}
                                 </option>
                               ))}
-                              {!standardExercises.includes(ex.name) && (
+                              {ex.name && !standardExercises.includes(ex.name) && (
                                 <option value={ex.name}>{ex.name}</option>
                               )}
                             </select>
@@ -733,8 +738,8 @@ export default function WorkoutPage() {
                               </span>
                               <input
                                 type="number"
-                                value={ex.sets}
-                                onChange={(e) => handleExerciseChange(dayIdx, exIdx, "sets", Number(e.target.value))}
+                                value={(ex.sets as any) === null || (ex.sets as any) === undefined || isNaN(ex.sets as any) || (ex.sets as any) === "" ? "" : ex.sets}
+                                onChange={(e) => handleExerciseChange(dayIdx, exIdx, "sets", e.target.value === "" ? "" : Number(e.target.value))}
                                 className="w-full text-center text-xs font-mono font-bold bg-secondary py-1 border border-border rounded text-foreground focus:outline-none focus:ring-primary focus:border-primary"
                               />
                             </div>
@@ -744,8 +749,8 @@ export default function WorkoutPage() {
                               </span>
                               <input
                                 type="number"
-                                value={ex.repMin}
-                                onChange={(e) => handleExerciseChange(dayIdx, exIdx, "repMin", Number(e.target.value))}
+                                value={(ex.repMin as any) === null || (ex.repMin as any) === undefined || isNaN(ex.repMin as any) || (ex.repMin as any) === "" ? "" : ex.repMin}
+                                onChange={(e) => handleExerciseChange(dayIdx, exIdx, "repMin", e.target.value === "" ? "" : Number(e.target.value))}
                                 className="w-full text-center text-xs font-mono font-bold bg-secondary py-1 border border-border rounded text-foreground focus:outline-none focus:ring-primary"
                               />
                             </div>
@@ -755,8 +760,8 @@ export default function WorkoutPage() {
                               </span>
                               <input
                                 type="number"
-                                value={ex.repMax}
-                                onChange={(e) => handleExerciseChange(dayIdx, exIdx, "repMax", Number(e.target.value))}
+                                value={(ex.repMax as any) === null || (ex.repMax as any) === undefined || isNaN(ex.repMax as any) || (ex.repMax as any) === "" ? "" : ex.repMax}
+                                onChange={(e) => handleExerciseChange(dayIdx, exIdx, "repMax", e.target.value === "" ? "" : Number(e.target.value))}
                                 className="w-full text-center text-xs font-mono font-bold bg-secondary py-1 border border-border rounded text-foreground focus:outline-none focus:ring-primary"
                               />
                             </div>
@@ -766,9 +771,9 @@ export default function WorkoutPage() {
                               </span>
                               <input
                                 type="number"
-                                value={ex.rest}
+                                value={(ex.rest as any) === null || (ex.rest as any) === undefined || isNaN(ex.rest as any) || (ex.rest as any) === "" ? "" : ex.rest}
                                 step={10}
-                                onChange={(e) => handleExerciseChange(dayIdx, exIdx, "rest", Number(e.target.value))}
+                                onChange={(e) => handleExerciseChange(dayIdx, exIdx, "rest", e.target.value === "" ? "" : Number(e.target.value))}
                                 className="w-full text-center text-xs font-mono font-bold bg-secondary py-1 border border-border rounded text-foreground focus:outline-none focus:ring-primary"
                               />
                             </div>
@@ -777,7 +782,7 @@ export default function WorkoutPage() {
                           {/* Row 3: Tempo / Cue Notes */}
                           <Input
                             placeholder="Add coaching tips or eccentric tempos..."
-                            value={ex.notes}
+                            value={ex.notes || ""}
                             onChange={(e) => handleExerciseChange(dayIdx, exIdx, "notes", e.target.value)}
                             className="h-7 text-[10px] px-2 border-border bg-secondary"
                           />
@@ -894,12 +899,26 @@ export default function WorkoutPage() {
             {/* Split Schedule Outline */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
               {activePlan.days.map((day: any) => (
-                <Card key={day.dayNumber} className="border-border bg-card h-fit">
+                <Card key={day.dayNumber} className={`border-border bg-card h-fit transition-all duration-300 ${day.dayNumber === currentCycleDay ? "ring-2 ring-primary bg-primary/[0.02]" : "opacity-80"}`}>
                   <CardHeader className="pb-3 border-b border-border/40 bg-[#0E0E10]/40">
                     <div className="flex items-center justify-between">
-                      <span className="text-[10px] font-mono font-bold text-primary bg-primary/10 px-2 py-0.5 rounded">
-                        DAY {day.dayNumber}
-                      </span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] font-mono font-bold text-primary bg-primary/10 px-2 py-0.5 rounded">
+                          DAY {day.dayNumber}
+                        </span>
+                        {day.dayNumber === currentCycleDay && (
+                          todayDone ? (
+                            <span className="text-[9px] font-bold text-[#10B981] bg-[#10B981]/10 border border-[#10B981]/20 px-2 py-0.5 rounded uppercase tracking-wider flex items-center gap-1">
+                              <Check className="w-3 h-3 text-[#10B981]" />
+                              Completed
+                            </span>
+                          ) : (
+                            <span className="text-[9px] font-bold text-[#00E5FF] bg-[#00E5FF]/10 border border-[#00E5FF]/20 px-2 py-0.5 rounded uppercase tracking-wider animate-pulse">
+                              Today's Target
+                            </span>
+                          )
+                        )}
+                      </div>
                       <span className="text-[10px] font-medium text-muted-foreground flex items-center gap-1">
                         <Dumbbell className="w-3.5 h-3.5" />
                         {day.exercises.length} Exercises
@@ -938,14 +957,31 @@ export default function WorkoutPage() {
                     ))}
                   </CardContent>
 
-                  <CardFooter className="pt-0 border-t border-border/40 py-3 bg-[#0E0E10]/20 justify-end">
-                    <Link href={`/workout/session-${day.dayNumber}`}>
-                      <Button size="sm" className="h-8 text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5">
-                        Log Today
-                        <ArrowRight className="w-3 h-3" />
-                      </Button>
-                    </Link>
-                  </CardFooter>
+                  {day.dayNumber === currentCycleDay ? (
+                    todayDone ? (
+                      <CardFooter className="pt-0 border-t border-border/40 py-3 bg-[#0E0E10]/20 justify-end">
+                        <Button disabled size="sm" className="h-8 text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 opacity-100 cursor-not-allowed">
+                          <Check className="w-3.5 h-3.5" />
+                          Training Done
+                        </Button>
+                      </CardFooter>
+                    ) : (
+                      <CardFooter className="pt-0 border-t border-border/40 py-3 bg-[#0E0E10]/20 justify-end">
+                        <Link href={`/workout/session-${day.dayNumber}`}>
+                          <Button size="sm" className="h-8 text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5 neon-glow">
+                            Log Today
+                            <ArrowRight className="w-3 h-3" />
+                          </Button>
+                        </Link>
+                      </CardFooter>
+                    )
+                  ) : (
+                    <CardFooter className="pt-0 border-t border-border/40 py-3 bg-[#0E0E10]/10 justify-center">
+                      <span className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground/60 flex items-center gap-1">
+                        🔒 Locked • Complete previous days first
+                      </span>
+                    </CardFooter>
+                  )}
                 </Card>
               ))}
             </div>

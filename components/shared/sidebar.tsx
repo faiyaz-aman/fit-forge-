@@ -43,6 +43,9 @@ export function Sidebar() {
     try {
       const response = await fetch("/api/auth/signout", { method: "POST" });
       if (response.ok) {
+        if (typeof window !== "undefined") {
+          localStorage.clear();
+        }
         window.location.href = "/signin";
       }
     } catch (err) {

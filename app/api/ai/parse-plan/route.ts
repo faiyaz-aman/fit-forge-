@@ -36,6 +36,8 @@ export async function POST(request: Request) {
   try {
     const contentType = request.headers.get("content-type") || "";
     let rawText = "";
+    let fileBase64 = "";
+    let fileMimeType = "";
 
     // Parse incoming payload (Multipart Form or Direct JSON)
     if (contentType.includes("multipart/form-data")) {
@@ -44,8 +46,11 @@ export async function POST(request: Request) {
       const textParam = formData.get("text") as string | null;
 
       if (file) {
-        // In full production, pdf-parse, mammoth, or OCR (tesseract) would extract text here.
-        // For local development, we extract the filename and metadata to feed the mock parser.
+        // Convert file directly to base64 inline data for Gemini
+        const arrayBuffer = await file.arrayBuffer();
+        const buffer = Buffer.from(arrayBuffer);
+        fileBase64 = buffer.toString("base64");
+        fileMimeType = file.type;
         rawText = `[File Uploaded: ${file.name}, Type: ${file.type}, Size: ${file.size} bytes]`;
       } else if (textParam) {
         rawText = textParam;
@@ -55,7 +60,7 @@ export async function POST(request: Request) {
       rawText = body.text || "";
     }
 
-    if (!rawText) {
+    if (!rawText && !fileBase64) {
       return NextResponse.json(
         { success: false, error: "No plan content or file provided." },
         { status: 400 }
@@ -66,25 +71,48 @@ export async function POST(request: Request) {
     const geminiKey = process.env.GEMINI_API_KEY;
     if (geminiKey && !geminiKey.includes("dummy") && geminiKey.trim() !== "") {
       try {
-        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiKey}`, {
+        const parts: any[] = [];
+        parts.push({ text: SYSTEM_PROMPT });
+
+        if (fileBase64 && fileMimeType) {
+          parts.push({
+            inlineData: {
+              mimeType: fileMimeType,
+              data: fileBase64
+            }
+          });
+          parts.push({ text: "Please parse this uploaded workout document (image/pdf) and extract its complete structured split program." });
+        } else if (rawText) {
+          parts.push({ text: `Here is the raw extracted text of my program:\n\n${rawText}` });
+        }
+
+        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiKey}`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            contents: [{
-              parts: [{
-                text: `${SYSTEM_PROMPT}\n\nHere is the raw extracted text of my program:\n\n${rawText}`
-              }]
-            }],
+            contents: [{ parts }],
             generationConfig: {
               responseMimeType: "application/json"
             }
           })
         });
 
-        if (response.ok) {
+        if (!response.ok) {
+          const errText = await response.text();
+          console.error(`Gemini Plan Parser API call failed with status ${response.status}:`, errText);
+        } else {
           const resData = await response.json();
           const parsedText = resData.candidates[0].content.parts[0].text;
           const parsedPlan = JSON.parse(parsedText);
+          
+          // Post-process to guarantee days have orderIndex and dayNumber
+          if (parsedPlan && Array.isArray(parsedPlan.days)) {
+            parsedPlan.days = parsedPlan.days.map((day: any, idx: number) => ({
+              ...day,
+              orderIndex: day.orderIndex !== undefined ? day.orderIndex : idx,
+              dayNumber: day.dayNumber !== undefined ? day.dayNumber : idx + 1
+            }));
+          }
           return NextResponse.json({ success: true, parsed: parsedPlan, mode: "gemini" });
         }
       } catch (err) {

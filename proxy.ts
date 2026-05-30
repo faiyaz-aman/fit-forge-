@@ -18,10 +18,10 @@ export async function proxy(request: NextRequest) {
     return supabaseResponse;
   }
 
+  // Sign-in and Sign-up routes are auth routes. Onboarding is a protected setup route.
   const isAuthRoute =
     pathname.startsWith("/signin") ||
-    pathname.startsWith("/signup") ||
-    pathname.startsWith("/onboarding");
+    pathname.startsWith("/signup");
 
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;

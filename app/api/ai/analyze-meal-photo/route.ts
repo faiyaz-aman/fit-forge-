@@ -41,7 +41,7 @@ export async function POST(request: Request) {
     if (geminiKey && !geminiKey.includes("dummy") && geminiKey.trim() !== "") {
       try {
         const cleanBase64 = imageBase64.replace(/^data:image\/\w+;base64,/, "");
-        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiKey}`, {
+        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiKey}`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -71,7 +71,10 @@ export async function POST(request: Request) {
           })
         });
 
-        if (response.ok) {
+        if (!response.ok) {
+          const errText = await response.text();
+          console.error(`Gemini Vision API call failed with status ${response.status}:`, errText);
+        } else {
           const resData = await response.json();
           const parsedText = resData.candidates[0].content.parts[0].text;
           const parsedMeal = JSON.parse(parsedText);

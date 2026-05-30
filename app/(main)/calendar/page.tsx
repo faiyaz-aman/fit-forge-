@@ -31,27 +31,16 @@ interface LogItem {
 const seedActivityLogs: Record<number, LogItem[]> = {
   28: [
     { id: "w-1", type: "workout", title: "Push Day Session", details: "Volume: 17,400 kg | Sets: 10 logged | Duration: 48m", meta: { volume: 17400, sets: 10, duration: "48m", split: "Push Day" } },
-    { id: "n-1", type: "nutrition", title: "Clean Bulking Meals", details: "Logged 2,450 kcal | P: 162g • C: 290g • F: 72g", meta: { calories: 2450, p: 162, c: 290, f: 72 } },
-    { id: "wt-1", type: "water", title: "Hydration Intake", details: "Logged 3,200 ml of fluids", meta: { ml: 3200 } },
-    { id: "p-1", type: "photos", title: "Progress Photo Captured", details: "Front & Side encrypted snaps saved", meta: { count: 2 } },
   ],
   27: [
     { id: "w-2", type: "workout", title: "Pull Day Session", details: "Volume: 16,800 kg | Sets: 11 logged | Duration: 52m", meta: { volume: 16800, sets: 11, duration: "52m", split: "Pull Day" } },
-    { id: "n-2", type: "nutrition", title: "Clean Bulking Meals", details: "Logged 2,750 kcal | P: 175g • C: 320g • F: 82g", meta: { calories: 2750, p: 175, c: 320, f: 82 } },
-    { id: "wt-2", type: "water", title: "Hydration Intake", details: "Logged 2,800 ml of fluids", meta: { ml: 2800 } },
   ],
-  26: [
-    { id: "wt-3", type: "water", title: "Hydration Intake", details: "Logged 2,500 ml of fluids", meta: { ml: 2500 } },
-  ],
+  26: [],
   25: [
     { id: "w-3", type: "workout", title: "Legs Day Session", details: "Volume: 16,200 kg | Sets: 11 logged | Duration: 58m", meta: { volume: 16200, sets: 11, duration: "58m", split: "Legs Day" } },
-    { id: "n-3", type: "nutrition", title: "Clean Bulking Meals", details: "Logged 2,800 kcal | P: 180g • C: 340g • F: 80g", meta: { calories: 2800, p: 180, c: 340, f: 80 } },
-    { id: "wt-4", type: "water", title: "Hydration Intake", details: "Logged 3,400 ml of fluids", meta: { ml: 3400 } },
-    { id: "p-2", type: "photos", title: "Progress Photo Captured", details: "Back encrypted snap saved", meta: { count: 1 } },
   ],
   22: [
     { id: "w-4", type: "workout", title: "Push Day Session", details: "Volume: 14,900 kg | Sets: 10 logged | Duration: 44m", meta: { volume: 14900, sets: 10, duration: "44m", split: "Push Day" } },
-    { id: "n-4", type: "nutrition", title: "High Protein Intake", details: "Logged 2,600 kcal | P: 165g • C: 310g • F: 75g", meta: { calories: 2600, p: 165, c: 310, f: 75 } },
   ]
 };
 
@@ -60,11 +49,48 @@ export default function CalendarPage() {
   const [currentMonth, setCurrentMonth] = useState(new Date().getMonth());
   const [selectedDay, setSelectedDay] = useState<number | null>(null);
   const [sessions, setSessions] = useState<any[]>([]);
+  const [waterLogs, setWaterLogs] = useState<any[]>([]);
+  const [nutritionLogs, setNutritionLogs] = useState<any[]>([]);
 
   useEffect(() => {
-    // Load real workout logs from the store
+    // 1. Load real workout logs from the store
     const completed = getWorkoutLogs();
     setSessions(completed);
+
+    // 2. Load real water logs from localStorage
+    try {
+      const storedWater = localStorage.getItem("fitforge_water_logs");
+      if (storedWater) setWaterLogs(JSON.parse(storedWater));
+    } catch (e) {}
+
+    // 3. Load real nutrition logs from localStorage
+    try {
+      const storedMeals = localStorage.getItem("fitforge_meals");
+      if (storedMeals) setNutritionLogs(JSON.parse(storedMeals));
+    } catch (e) {}
+
+    // Background fetch to keep synced
+    const fetchSyncData = async () => {
+      try {
+        const { getWaterLogsCloud, getNutritionLogsCloud } = await import("@/lib/supabase-db");
+        
+        getWaterLogsCloud().then(cloudWater => {
+          if (cloudWater && cloudWater.length > 0) {
+            setWaterLogs(cloudWater);
+            localStorage.setItem("fitforge_water_logs", JSON.stringify(cloudWater));
+          }
+        }).catch(() => {});
+
+        getNutritionLogsCloud().then(cloudNutrition => {
+          if (cloudNutrition && cloudNutrition.length > 0) {
+            setNutritionLogs(cloudNutrition);
+            localStorage.setItem("fitforge_meals", JSON.stringify(cloudNutrition));
+          }
+        }).catch(() => {});
+      } catch (e) {}
+    };
+
+    fetchSyncData();
   }, []);
 
   const monthNames = [
@@ -136,12 +162,41 @@ export default function CalendarPage() {
         },
       });
     });
-    
-    // Check if there is nutrition, water, or photo data in mock seeds
-    if (currentMonth === 4 && currentYear === 2026) {
-      const mockNutritionWater = seedActivityLogs[day] || [];
-      const nonWorkouts = mockNutritionWater.filter(l => l.type !== "workout");
-      logs.push(...nonWorkouts);
+
+    // Load real dynamic nutrition entries for this date
+    const dayMeals = nutritionLogs.filter((m) => m.loggedAt === targetDateStr);
+    if (dayMeals.length > 0) {
+      const totalCal = dayMeals.reduce((sum, m) => sum + (Number(m.calories) || 0), 0);
+      const totalP = dayMeals.reduce((sum, m) => sum + (Number(m.protein) || 0), 0);
+      const totalC = dayMeals.reduce((sum, m) => sum + (Number(m.carbs) || 0), 0);
+      const totalF = dayMeals.reduce((sum, m) => sum + (Number(m.fat) || 0), 0);
+
+      logs.push({
+        id: `nutrition-${targetDateStr}`,
+        type: "nutrition",
+        title: "Daily Nutrition Entry",
+        details: `Logged: ${totalCal.toLocaleString()} kcal | P: ${totalP}g • C: ${totalC}g • F: ${totalF}g`,
+        meta: {
+          calories: totalCal,
+          p: totalP,
+          c: totalC,
+          f: totalF,
+        },
+      });
+    }
+
+    // Load real dynamic water entries for this date
+    const dayWater = waterLogs.find((w) => w.loggedAt === targetDateStr);
+    if (dayWater && dayWater.amountMl > 0) {
+      logs.push({
+        id: `water-${targetDateStr}`,
+        type: "water",
+        title: "Hydration Intake",
+        details: `Logged: ${dayWater.amountMl} ml of fluids`,
+        meta: {
+          amountMl: dayWater.amountMl,
+        },
+      });
     }
     
     return logs;
@@ -392,6 +447,22 @@ export default function CalendarPage() {
                                 <span className="text-[8px] text-muted-foreground block font-bold">Fat</span>
                                 <span className="font-mono text-foreground font-semibold">{log.meta.f}g</span>
                               </div>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* CASE 3: WATER INTAKE PROGRESS BAR */}
+                        {isWater && log.meta && (
+                          <div className="space-y-2.5 border-t border-border/40 pt-3">
+                            <div className="flex justify-between items-baseline text-[10px]">
+                              <span className="text-muted-foreground font-semibold">Hydration Tracker</span>
+                              <span className="font-mono text-foreground font-bold">{log.meta.amountMl} / 3200 ml</span>
+                            </div>
+                            <div className="h-2 w-full bg-secondary rounded-full overflow-hidden">
+                              <div
+                                className="h-full bg-blue-500 rounded-full transition-all duration-500"
+                                style={{ width: `${Math.min((log.meta.amountMl / 3200) * 100, 100)}%` }}
+                              />
                             </div>
                           </div>
                         )}

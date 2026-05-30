@@ -643,14 +643,7 @@ export default function WorkoutSessionPage() {
                       </CardDescription>
                     </CardHeader>
 
-                    {/* AI Overload Helper banner */}
-                    <div className="px-5 py-2.5 bg-primary/[0.02] border-b border-border/40 flex items-center justify-between text-xs select-none">
-                      <div className="flex items-center gap-1.5 font-semibold text-primary">
-                        <Zap className="w-3.5 h-3.5 text-primary" />
-                        <span>AI OVERLOAD TARGET:</span>
-                      </div>
-                      <span className="font-semibold text-foreground italic">{activeExercise.targetCue}</span>
-                    </div>
+
 
                     <CardContent className="p-4 space-y-3">
                       {activeExercise.sets.map((set: any, setIdx: number) => (
