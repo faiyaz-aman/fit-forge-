@@ -1,16 +1,5 @@
-const CACHE_NAME = "fitforge-v1";
+const CACHE_NAME = "fitforge-v2";
 const ASSETS_TO_CACHE = [
-  "/",
-  "/home",
-  "/workout",
-  "/stats",
-  "/photos",
-  "/nutrition",
-  "/chat",
-  "/tips",
-  "/calendar",
-  "/profile",
-  "/settings",
   "/favicon.ico",
   "/manifest.json"
 ];
