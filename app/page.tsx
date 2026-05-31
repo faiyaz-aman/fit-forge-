@@ -59,7 +59,7 @@ export default function PremiumLandingPage() {
     };
   }, []);
 
-  // Reveal elements on viewport enter
+  // Reveal elements on viewport enter (optimized with safety hydration checks & double-redundant scrolling fallbacks)
   useEffect(() => {
     const observerOptions = {
       threshold: 0.1,
@@ -74,11 +74,45 @@ export default function PremiumLandingPage() {
       });
     }, observerOptions);
 
-    const revealElements = document.querySelectorAll(".reveal-on-scroll");
-    revealElements.forEach((el) => observer.observe(el));
+    // Robust scroll-reveal fallback for complete browser/hydration environment compatibility
+    const handleScrollRevealFallback = () => {
+      const revealElements = document.querySelectorAll(".reveal-on-scroll:not(.revealed)");
+      const windowHeight = window.innerHeight;
+      revealElements.forEach((el) => {
+        const rect = el.getBoundingClientRect();
+        // Reveal if element's top boundary has entered the viewport
+        if (rect.top < windowHeight - 30) {
+          el.classList.add("revealed");
+        }
+      });
+    };
+
+    const observeElements = () => {
+      const revealElements = document.querySelectorAll(".reveal-on-scroll");
+      revealElements.forEach((el) => observer.observe(el));
+      // Fire fallback immediately to check elements already in viewport
+      handleScrollRevealFallback();
+    };
+
+    // Run immediately
+    observeElements();
+
+    // Run at intervals to catch late-hydrating or client-side rendered DOM nodes
+    const t1 = setTimeout(observeElements, 100);
+    const t2 = setTimeout(observeElements, 500);
+    const t3 = setTimeout(observeElements, 1500);
+
+    // Register active fallback scroll/resize listeners for total client compatibility
+    window.addEventListener("scroll", handleScrollRevealFallback);
+    window.addEventListener("resize", handleScrollRevealFallback);
 
     return () => {
-      revealElements.forEach((el) => observer.unobserve(el));
+      clearTimeout(t1);
+      clearTimeout(t2);
+      clearTimeout(t3);
+      window.removeEventListener("scroll", handleScrollRevealFallback);
+      window.removeEventListener("resize", handleScrollRevealFallback);
+      observer.disconnect();
     };
   }, []);
 
@@ -90,8 +124,9 @@ export default function PremiumLandingPage() {
         const rect = showcaseRef.current.getBoundingClientRect();
         const windowHeight = window.innerHeight;
         let progress = 0;
-        if (rect.top <= 0) {
-          progress = Math.min(1, Math.abs(rect.top) / (rect.height - windowHeight));
+        const scrollableHeight = rect.height - windowHeight;
+        if (rect.top <= 0 && scrollableHeight > 0) {
+          progress = Math.min(1, Math.abs(rect.top) / scrollableHeight);
         }
         setShowcaseProgress(progress);
 
@@ -147,8 +182,9 @@ export default function PremiumLandingPage() {
         const rect = protocolRef.current.getBoundingClientRect();
         const windowHeight = window.innerHeight;
         let progress = 0;
-        if (rect.top <= 0) {
-          progress = Math.min(1, Math.abs(rect.top) / (rect.height - windowHeight));
+        const scrollableHeight = rect.height - windowHeight;
+        if (rect.top <= 0 && scrollableHeight > 0) {
+          progress = Math.min(1, Math.abs(rect.top) / scrollableHeight);
         }
         setProtocolProgress(progress);
       }

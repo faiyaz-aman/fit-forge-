@@ -106,7 +106,7 @@ body {
   background-color: var(--background);
   color: var(--foreground);
   font-family: var(--font-sans);
-  overflow-x: hidden;
+  overflow-x: clip;
   min-height: 100vh;
   letter-spacing: -0.01em;
   -webkit-font-smoothing: antialiased;
@@ -145,3 +145,325 @@ html {
   -ms-overflow-style: none;
   scrollbar-width: none;
 }
+
+/* --- PREMIUM STITCH DESIGN SYSTEM ADDITIONS --- */
+
+/* Brand Accent & Theme Variable Overrides */
+:root {
+  --primary-container: #22f58c;
+  --surface-container-lowest: #0a0f0d;
+  --on-surface-variant: #bacbba;
+  --text-secondary: #8A9590;
+  --border-low-opacity: rgba(255, 255, 255, 0.06);
+}
+
+/* Dot Matrix Grid Technical Background */
+.dot-matrix-bg {
+  background-image: radial-gradient(rgba(255, 255, 255, 0.08) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+/* High-End Frosted Glass Panel */
+.glass-panel {
+  background: rgba(17, 24, 20, 0.65);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  position: relative;
+  overflow: hidden;
+}
+.glass-panel::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: url('data:image/svg+xml,%3Csvg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg"%3E%3Cfilter id="noiseFilter"%3E%3CfeTurbulence type="fractalNoise" baseFrequency="0.65" numOctaves="3" stitchTiles="stitch"/%3E%3C/filter%3E%3Crect width="100%25" height="100%25" filter="url(%23noiseFilter)" opacity="0.03"/%3E%3C/svg%3E');
+  opacity: 0.03;
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* High-End Frosted Glass Card with transitions */
+.glass-card {
+  background: linear-gradient(145deg, rgba(17,24,20,0.8) 0%, rgba(10,15,13,0.95) 100%);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255,255,255,0.06);
+  position: relative;
+  overflow: hidden;
+  transition: transform 0.6s cubic-bezier(0.65, 0, 0.35, 1), border-color 0.6s cubic-bezier(0.65, 0, 0.35, 1), box-shadow 0.6s cubic-bezier(0.65, 0, 0.35, 1);
+  will-change: transform, border-color;
+}
+.glass-card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: url('data:image/svg+xml,%3Csvg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg"%3E%3Cfilter id="noiseFilter"%3E%3CfeTurbulence type="fractalNoise" baseFrequency="0.65" numOctaves="3" stitchTiles="stitch"/%3E%3C/filter%3E%3Crect width="100%25" height="100%25" filter="url(%23noiseFilter)"/%3E%3C/svg%3E');
+  opacity: 0.03;
+  pointer-events: none;
+}
+
+/* Dynamic Bento Grid Cards */
+.bento-card {
+  background: linear-gradient(180deg, rgba(17, 24, 20, 0.7) 0%, rgba(10, 15, 13, 0.9) 100%);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  position: relative;
+  overflow: hidden;
+  transition: transform 0.4s cubic-bezier(0.2, 0, 0.2, 1), border-color 0.4s ease, box-shadow 0.4s ease, opacity 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+  transform-style: preserve-3d;
+}
+.bento-card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: url('data:image/svg+xml,%3Csvg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg"%3E%3Cfilter id="noiseFilter"%3E%3CfeTurbulence type="fractalNoise" baseFrequency="0.65" numOctaves="3" stitchTiles="stitch"/%3E%3C/filter%3E%3Crect width="100%25" height="100%25" filter="url(%23noiseFilter)" opacity="0.03"/%3E%3C/svg%3E');
+  pointer-events: none;
+  z-index: 1;
+}
+.bento-card:hover {
+  border-color: rgba(34, 245, 140, 0.5);
+  box-shadow: 0 0 30px rgba(34, 245, 140, 0.15), inset 0 0 15px rgba(34, 245, 140, 0.05);
+}
+
+/* Text Neon Stroke Style */
+.text-outline-neon {
+  color: transparent;
+  -webkit-text-stroke: 1px #22f58c;
+  opacity: 0.4;
+}
+
+/* Smooth Glow Accent */
+.pro-glow {
+  box-shadow: 0 0 30px rgba(34, 245, 140, 0.1), inset 0 0 20px rgba(34, 245, 140, 0.05);
+}
+
+/* Perspective Wrappers */
+.perspective-1000 {
+  perspective: 1000px;
+}
+
+/* 3D Dashboard Interactive Tilt */
+.dash-perspective {
+  transform: perspective(1000px) rotateX(15deg) rotateY(-5deg);
+  transform-style: preserve-3d;
+  transition: transform 0.5s ease;
+}
+.dash-perspective:hover {
+  transform: perspective(1000px) rotateX(5deg) rotateY(0deg) translateZ(20px);
+}
+
+/* Vibrant Metallic/Neon Gradients */
+.neon-gradient {
+  background: linear-gradient(135deg, #22f58c 0%, #0bd974 100%);
+}
+.text-gradient {
+  background: linear-gradient(90deg, #22F58C 0%, #0BD974 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+/* Ambient radial glow lights */
+.glow-spotlight {
+  position: absolute;
+  width: 600px;
+  height: 600px;
+  background: radial-gradient(circle, rgba(34, 245, 140, 0.15) 0%, transparent 70%);
+  filter: blur(60px);
+  pointer-events: none;
+  z-index: -1;
+}
+
+/* 3D Float Visual Motion */
+@keyframes float-orbit {
+  0% { transform: translateY(0px) rotate(0deg) scale(1); }
+  33% { transform: translateY(-15px) rotate(2deg) scale(1.02); }
+  66% { transform: translateY(10px) rotate(-1deg) scale(0.98); }
+  100% { transform: translateY(0px) rotate(0deg) scale(1); }
+}
+.animate-float {
+  animation: float-orbit 8s ease-in-out infinite;
+}
+
+/* Sub-Headline Entrance Animation */
+@keyframes fade-in-up {
+  from { opacity: 0; transform: translateY(30px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.animate-entrance {
+  opacity: 0;
+  animation: fade-in-up 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Pulse Glow Keyframes */
+@keyframes pulse-glow {
+  0%, 100% { box-shadow: 0 0 10px rgba(34, 245, 140, 0.2); border-color: rgba(34, 245, 140, 0.3); }
+  50% { box-shadow: 0 0 25px rgba(34, 245, 140, 0.5); border-color: rgba(34, 245, 140, 0.6); }
+}
+.animate-pulse-glow {
+  animation: pulse-glow 2.5s ease-in-out infinite;
+}
+
+/* Pulse Energy Tiers */
+@keyframes pulse-energy {
+  0%, 100% { box-shadow: 0 0 30px rgba(34, 245, 140, 0.15), inset 0 0 20px rgba(34, 245, 140, 0.05); border-color: rgba(34, 245, 140, 0.3); }
+  50% { box-shadow: 0 0 50px rgba(34, 245, 140, 0.3), inset 0 0 30px rgba(34, 245, 140, 0.1); border-color: rgba(34, 245, 140, 0.6); }
+}
+.animate-pulse-energy {
+  animation: pulse-energy 3s ease-in-out infinite;
+}
+
+/* Pulse CTA button */
+@keyframes pulse-cta {
+  0%, 100% { transform: scale(1); box-shadow: 0 0 40px rgba(34, 245, 140, 0.4); }
+  50% { transform: scale(1.02); box-shadow: 0 0 65px rgba(34, 245, 140, 0.6); }
+}
+.animate-pulse-cta {
+  animation: pulse-cta 4s ease-in-out infinite;
+}
+
+/* Spotlight cursor base styling */
+.cursor-spotlight {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  pointer-events: none;
+  z-index: 1;
+  background: radial-gradient(circle 30vmax at var(--x, 50%) var(--y, 50%), rgba(34, 245, 140, 0.12) 0%, transparent 80%);
+  transition: background 0.1s ease;
+}
+
+.sticky-container {
+  height: 300vh;
+}
+.sticky-content {
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+.phone-mockup {
+  transition: transform 0.15s cubic-bezier(0.2, 0, 0.2, 1);
+  transform-style: preserve-3d;
+}
+.scroll-caption {
+  opacity: 0;
+  transform: translateY(30px);
+  transition: all 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+  position: absolute;
+  pointer-events: none;
+}
+.scroll-caption.active {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+
+.spotlight-bg {
+  background: radial-gradient(circle at 50% 50%, rgba(34, 245, 140, 0.1) 0%, transparent 60%);
+}
+
+.phone-module {
+  position: absolute;
+  inset: 0;
+  transition: opacity 0.6s cubic-bezier(0.4, 0, 0.2, 1), transform 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+  opacity: 0;
+  transform: translateY(10px);
+}
+.phone-module.active {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.hide-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.hide-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Scroll reveal animations */
+.reveal-on-scroll {
+  opacity: 0;
+  transform: translateY(30px);
+  transition: opacity 1s cubic-bezier(0.16, 1, 0.3, 1), transform 1s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.reveal-on-scroll.revealed {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* --- MODERN & PREMIUM PRICING SUITE --- */
+
+/* Interactive Laser Border Spotlight */
+.pricing-card-premium {
+  position: relative;
+  background: linear-gradient(180deg, rgba(17, 24, 20, 0.75) 0%, rgba(10, 15, 13, 0.95) 100%);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 1.5rem;
+  overflow: hidden;
+  transition: transform 0.6s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.6s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+  will-change: transform, box-shadow;
+}
+
+.pricing-card-premium::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 1.5rem;
+  padding: 1px; /* border thickness */
+  background: radial-gradient(
+    350px circle at var(--mouse-x, 0px) var(--mouse-y, 0px),
+    rgba(34, 245, 140, 0.35),
+    transparent 50%
+  );
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+          mask-composite: exclude;
+  pointer-events: none;
+  z-index: 10;
+  opacity: 0;
+  transition: opacity 0.5s ease;
+}
+
+.pricing-card-premium:hover::before {
+  opacity: 1;
+}
+
+.pricing-card-premium:hover {
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6), 0 0 30px rgba(34, 245, 140, 0.08);
+  border-color: rgba(34, 245, 140, 0.2);
+}
+
+/* Premium Pro Moving Laser Border */
+.pricing-pro-card-premium {
+  border-color: rgba(34, 245, 140, 0.35);
+  box-shadow: 0 0 45px rgba(34, 245, 140, 0.12), inset 0 0 20px rgba(34, 245, 140, 0.04);
+}
+
+.pricing-pro-card-premium::after {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border-radius: 1.5rem;
+  padding: 1.5px;
+  background: linear-gradient(90deg, #22f58c, #00d974, #22f58c);
+  background-size: 200% 200%;
+  animation: borderGradientRun 4s linear infinite;
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+          mask-composite: exclude;
+  pointer-events: none;
+  z-index: 9;
+}
+
+@keyframes borderGradientRun {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
