@@ -498,7 +498,7 @@ export default function PremiumLandingPage() {
             <img 
               alt="Futuristic titanium dumbbell floating mockup" 
               className="animate-float relative z-10 w-full max-w-[450px] h-auto object-contain drop-shadow-[0_20px_40px_rgba(0,0,0,0.8)] filter contrast-125 saturate-50 rounded-2xl border border-white/10" 
-              src="https://lh3.googleusercontent.com/aida/ADBb0ui2_2yTrgA_cH7fYaxEFSPZt8w-bKJIzc4OWdsgPTjWM3e839L7VQoJyerf_R18mSO67eK-2bGmRN14ZRwibW8Ih2K2vvYmykmaXnJMhIkf5Q28siLHSOuGyDSm71Fq5kQI4rY9kmCX_zCq97loKZQGmLSpNAdinopBD_aNTGo5pnMKMvnQIQUZ6QsAGsyr8EQoQAaXPpQDeTBAvlPXENpWibZkO1HY7QQ3KXJwj1jW_MaHQL7Imz-kHhiC"
+              src="/dumbbell_mockup.png"
             />
           </div>
 
