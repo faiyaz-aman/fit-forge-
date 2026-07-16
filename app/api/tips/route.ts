@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
 import { redisGet, redisSet } from "@/lib/redis";
 import { createClient } from "@/lib/supabase/server";
+import fs from "fs";
+import path from "path";
 
 export async function GET(request: Request) {
   try {
@@ -11,15 +12,57 @@ export async function GET(request: Request) {
 
     // 1. Cache-Aside Pattern: Read all scientific tips from Upstash Redis
     const cacheKey = "scientific_tips:all";
-    let tips = await redisGet<any[]>(cacheKey);
+    let tips: any[] | null = null;
+
+    try {
+      tips = await redisGet<any[]>(cacheKey);
+    } catch (redisError) {
+      console.warn("⚠️ Redis cache get failed:", redisError);
+    }
+
+    const supabase = await createClient();
 
     if (!tips) {
       console.log("⚡ [Redis Cache Miss] Fetching scientific tips from Supabase...");
-      tips = await prisma.tip.findMany();
-      
-      // Save in cache with 24-hour TTL (86,400 seconds)
-      if (tips && tips.length > 0) {
-        await redisSet(cacheKey, tips, 86400);
+      try {
+        if (supabase) {
+          const { data: dbTips, error: dbError } = await supabase
+            .from("Tip")
+            .select("*");
+          if (dbError) throw dbError;
+          tips = dbTips;
+        }
+        
+        // Save in cache with 24-hour TTL (86,400 seconds)
+        if (tips && tips.length > 0) {
+          try {
+            await redisSet(cacheKey, tips, 86400);
+          } catch (redisSetError) {
+            console.warn("⚠️ Redis cache set failed:", redisSetError);
+          }
+        }
+      } catch (dbError) {
+        console.warn("⚠️ Supabase fetch failed, falling back to local file:", dbError);
+      }
+    }
+
+    // Resilient Fallback: Read from local scientific_tips.json if database/cache is empty or failed
+    if (!tips || tips.length === 0) {
+      console.log("📂 Database empty or failed. Loading tips from local scientific_tips.json...");
+      try {
+        const jsonPath = path.join(process.cwd(), "scientific_tips.json");
+        if (fs.existsSync(jsonPath)) {
+          const rawData = fs.readFileSync(jsonPath, "utf8");
+          const parsed = JSON.parse(rawData);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            tips = parsed;
+            console.log(`✅ Resilient fallback successfully loaded ${tips.length} tips from scientific_tips.json`);
+          }
+        } else {
+          console.error(`❌ scientific_tips.json not found at path: ${jsonPath}`);
+        }
+      } catch (fileError) {
+        console.error("❌ Failed to read or parse local scientific_tips.json:", fileError);
       }
     }
 
@@ -34,55 +77,88 @@ export async function GET(request: Request) {
     let todayFocus: string = "";
 
     try {
-      const supabase = await createClient();
       if (supabase) {
         const { data: { session } } = await supabase.auth.getSession();
         const user = session?.user;
         if (user) {
-          // Fetch Profile
-          const profile = await prisma.profile.findUnique({
-            where: { userId: user.id }
-          });
+          // Fetch Profile using Supabase client directly
+          const { data: profile, error: profileError } = await supabase
+            .from("profiles")
+            .select("goal, experience_level")
+            .eq("id", user.id)
+            .maybeSingle();
+
+          if (profileError) throw profileError;
+
           if (profile) {
             userGoal = profile.goal;
-            userExperience = profile.experienceLevel;
+            userExperience = profile.experience_level;
           }
 
-          // Fetch recent soreness logs (last 3 days)
-          const threeDaysAgo = new Date();
-          threeDaysAgo.setDate(threeDaysAgo.getDate() - 3);
-          const sorenessLogs = await prisma.sorenessLog.findMany({
-            where: {
-              userId: user.id,
-              loggedAt: { gte: threeDaysAgo }
-            },
-            select: { muscleGroup: true, intensity: true }
-          });
-          sorenessLogs.forEach(log => {
-            if (log.intensity >= 2) {
-              soreMuscles.push(log.muscleGroup.toLowerCase());
-            }
-          });
+          // Fetch recent soreness logs from completed workout_sessions (last 3 days)
+          const { data: recentSessions, error: sessionsError } = await supabase
+            .from("workout_sessions")
+            .select("soreness_areas, started_at")
+            .eq("user_id", user.id);
+
+          if (sessionsError) throw sessionsError;
+
+          if (recentSessions) {
+            const threeDaysAgoTime = Date.now() - 3 * 24 * 60 * 60 * 1000;
+            recentSessions.forEach((session: any) => {
+              if (session.started_at) {
+                const sessionTime = new Date(session.started_at).getTime();
+                if (sessionTime >= threeDaysAgoTime) {
+                  if (session.soreness_areas && Array.isArray(session.soreness_areas)) {
+                    session.soreness_areas.forEach((area: string) => {
+                      soreMuscles.push(area.toLowerCase());
+                    });
+                  }
+                }
+              }
+            });
+          }
 
           // Fetch today's scheduled workout day to extract focused muscle groups!
-          const activePlan = await prisma.workoutPlan.findFirst({
-            where: { userId: user.id, isActive: true },
-            include: { days: { orderBy: { orderIndex: "asc" } } }
-          });
-          if (activePlan && activePlan.days.length > 0) {
-            const completedCount = await prisma.workoutSession.count({
-              where: { userId: user.id, status: "COMPLETED" }
-            });
-            const dayIndex = completedCount % activePlan.days.length;
-            const currentDay = activePlan.days[dayIndex];
-            if (currentDay && currentDay.focus) {
-              todayFocus = currentDay.focus.toLowerCase();
+          const { data: activePlan, error: planError } = await supabase
+            .from("workout_plans")
+            .select("id")
+            .eq("user_id", user.id)
+            .eq("is_active", true)
+            .maybeSingle();
+
+          if (planError) throw planError;
+
+          if (activePlan) {
+            const { data: planDays, error: daysError } = await supabase
+              .from("plan_days")
+              .select("focus, order_index")
+              .eq("plan_id", activePlan.id)
+              .order("order_index", { ascending: true });
+
+            if (daysError) throw daysError;
+
+            if (planDays && planDays.length > 0) {
+              const { count: completedCount, error: countError } = await supabase
+                .from("workout_sessions")
+                .select("*", { count: "exact", head: true })
+                .eq("user_id", user.id)
+                .eq("status", "COMPLETED");
+
+              if (countError) throw countError;
+
+              const count = completedCount || 0;
+              const dayIndex = count % planDays.length;
+              const currentDay = planDays[dayIndex];
+              if (currentDay && currentDay.focus) {
+                todayFocus = currentDay.focus.toLowerCase();
+              }
             }
           }
         }
       }
     } catch (authError) {
-      // Gracefully fall back to standard daily rotation and evidence-based ranking on auth mismatches or prerender phases
+      console.warn("⚠️ Graceful fallback triggered during personalization fetch:", authError);
     }
 
     // 3. Compute Complex Scoring Matrices for Each Card
