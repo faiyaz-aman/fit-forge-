@@ -10,41 +10,45 @@ export async function GET(request: Request) {
     const category = searchParams.get("category") || "All";
     const searchQuery = searchParams.get("searchQuery") || "";
 
-    // 1. Cache-Aside Pattern: Read all scientific tips from Upstash Redis
     const cacheKey = "scientific_tips:all";
-    let tips: any[] | null = null;
-
-    try {
-      tips = await redisGet<any[]>(cacheKey);
-    } catch (redisError) {
-      console.warn("⚠️ Redis cache get failed:", redisError);
-    }
-
     const supabase = await createClient();
 
-    if (!tips) {
-      console.log("⚡ [Redis Cache Miss] Fetching scientific tips from Supabase...");
-      try {
-        if (supabase) {
-          const { data: dbTips, error: dbError } = await supabase
-            .from("Tip")
-            .select("*");
-          if (dbError) throw dbError;
-          tips = dbTips;
+    // 1. Fetch Session and Tips in parallel to eliminate sequential roundtrips
+    const [tipsResult, sessionResult] = await Promise.all([
+      // A. Try loading tips from cache, falling back to Supabase
+      (async () => {
+        let cached: any[] | null = null;
+        try {
+          cached = await redisGet<any[]>(cacheKey);
+        } catch (redisError) {
+          console.warn("⚠️ Redis cache get failed:", redisError);
         }
-        
-        // Save in cache with 24-hour TTL (86,400 seconds)
-        if (tips && tips.length > 0) {
+        if (!cached) {
+          console.log("⚡ [Redis Cache Miss] Fetching scientific tips from Supabase...");
           try {
-            await redisSet(cacheKey, tips, 86400);
-          } catch (redisSetError) {
-            console.warn("⚠️ Redis cache set failed:", redisSetError);
+            if (supabase) {
+              const { data: dbTips, error: dbError } = await supabase
+                .from("Tip")
+                .select("*");
+              if (dbError) throw dbError;
+              cached = dbTips;
+              if (dbTips && dbTips.length > 0) {
+                await redisSet(cacheKey, dbTips, 86400).catch(() => {});
+              }
+            }
+          } catch (dbError) {
+            console.warn("⚠️ Supabase fetch failed:", dbError);
           }
         }
-      } catch (dbError) {
-        console.warn("⚠️ Supabase fetch failed, falling back to local file:", dbError);
-      }
-    }
+        return cached;
+      })(),
+      // B. Fetch Auth Session
+      supabase ? supabase.auth.getSession() : Promise.resolve({ data: { session: null } })
+    ]);
+
+    let tips = tipsResult;
+    const session = sessionResult.data?.session;
+    const user = session?.user;
 
     // Resilient Fallback: Read from local scientific_tips.json if database/cache is empty or failed
     if (!tips || tips.length === 0) {
@@ -77,82 +81,76 @@ export async function GET(request: Request) {
     let todayFocus: string = "";
 
     try {
-      if (supabase) {
-        const { data: { session } } = await supabase.auth.getSession();
-        const user = session?.user;
-        if (user) {
-          // Fetch Profile using Supabase client directly
-          const { data: profile, error: profileError } = await supabase
+      if (supabase && user) {
+        // Run independent context queries in parallel (Round 2)
+        const [profileResult, sessionsResult, planResult] = await Promise.all([
+          supabase
             .from("profiles")
             .select("goal, experience_level")
             .eq("id", user.id)
-            .maybeSingle();
-
-          if (profileError) throw profileError;
-
-          if (profile) {
-            userGoal = profile.goal;
-            userExperience = profile.experience_level;
-          }
-
-          // Fetch recent soreness logs from completed workout_sessions (last 3 days)
-          const { data: recentSessions, error: sessionsError } = await supabase
+            .maybeSingle(),
+          supabase
             .from("workout_sessions")
-            .select("soreness_areas, started_at")
-            .eq("user_id", user.id);
-
-          if (sessionsError) throw sessionsError;
-
-          if (recentSessions) {
-            const threeDaysAgoTime = Date.now() - 3 * 24 * 60 * 60 * 1000;
-            recentSessions.forEach((session: any) => {
-              if (session.started_at) {
-                const sessionTime = new Date(session.started_at).getTime();
-                if (sessionTime >= threeDaysAgoTime) {
-                  if (session.soreness_areas && Array.isArray(session.soreness_areas)) {
-                    session.soreness_areas.forEach((area: string) => {
-                      soreMuscles.push(area.toLowerCase());
-                    });
-                  }
-                }
-              }
-            });
-          }
-
-          // Fetch today's scheduled workout day to extract focused muscle groups!
-          const { data: activePlan, error: planError } = await supabase
+            .select("soreness_areas, started_at, status")
+            .eq("user_id", user.id),
+          supabase
             .from("workout_plans")
             .select("id")
             .eq("user_id", user.id)
             .eq("is_active", true)
-            .maybeSingle();
+            .maybeSingle()
+        ]);
 
-          if (planError) throw planError;
+        if (profileResult.error) throw profileResult.error;
+        if (sessionsResult.error) throw sessionsResult.error;
+        if (planResult.error) throw planResult.error;
 
-          if (activePlan) {
-            const { data: planDays, error: daysError } = await supabase
-              .from("plan_days")
-              .select("focus, order_index")
-              .eq("plan_id", activePlan.id)
-              .order("order_index", { ascending: true });
+        const profile = profileResult.data;
+        const recentSessions = sessionsResult.data;
+        const activePlan = planResult.data;
 
-            if (daysError) throw daysError;
+        if (profile) {
+          userGoal = profile.goal;
+          userExperience = profile.experience_level;
+        }
 
-            if (planDays && planDays.length > 0) {
-              const { count: completedCount, error: countError } = await supabase
-                .from("workout_sessions")
-                .select("*", { count: "exact", head: true })
-                .eq("user_id", user.id)
-                .eq("status", "COMPLETED");
-
-              if (countError) throw countError;
-
-              const count = completedCount || 0;
-              const dayIndex = count % planDays.length;
-              const currentDay = planDays[dayIndex];
-              if (currentDay && currentDay.focus) {
-                todayFocus = currentDay.focus.toLowerCase();
+        let completedCount = 0;
+        if (recentSessions) {
+          const threeDaysAgoTime = Date.now() - 3 * 24 * 60 * 60 * 1000;
+          recentSessions.forEach((sess: any) => {
+            // Count completed sessions in-memory to save a database query
+            if (sess.status === "COMPLETED") {
+              completedCount++;
+            }
+            // Extract recent soreness
+            if (sess.started_at) {
+              const sessionTime = new Date(sess.started_at).getTime();
+              if (sessionTime >= threeDaysAgoTime) {
+                if (sess.soreness_areas && Array.isArray(sess.soreness_areas)) {
+                  sess.soreness_areas.forEach((area: string) => {
+                    soreMuscles.push(area.toLowerCase());
+                  });
+                }
               }
+            }
+          });
+        }
+
+        // Fetch dependent plan days if active plan exists (Round 3)
+        if (activePlan) {
+          const { data: planDays, error: daysError } = await supabase
+            .from("plan_days")
+            .select("focus, order_index")
+            .eq("plan_id", activePlan.id)
+            .order("order_index", { ascending: true });
+
+          if (daysError) throw daysError;
+
+          if (planDays && planDays.length > 0) {
+            const dayIndex = completedCount % planDays.length;
+            const currentDay = planDays[dayIndex];
+            if (currentDay && currentDay.focus) {
+              todayFocus = currentDay.focus.toLowerCase();
             }
           }
         }
